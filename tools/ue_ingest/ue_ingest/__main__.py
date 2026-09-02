@@ -179,11 +179,18 @@ def main(argv=None) -> None:
                                "Standard", "Vehicles", "Content")
         src_tpl = os.path.join(template_root, "TP_VehicleAdvBP", "Content",
                                "VehicleTemplate")
-        if not os.path.isdir(os.path.join(content_root, "OffroadCar")):
+        if not os.path.isdir(os.path.join(content_root, "Vehicles",
+                                           "OffroadCar")):
+            # the FeaturePack's internal refs expect /Game/Vehicles/...
+            # (SharedContentPacks MountName="Vehicles" in TemplateDefs.ini)
+            os.makedirs(os.path.join(content_root, "Vehicles"),
+                        exist_ok=True)
             shutil.copytree(os.path.join(src_veh, "OffroadCar"),
-                            os.path.join(content_root, "OffroadCar"))
+                            os.path.join(content_root, "Vehicles",
+                                         "OffroadCar"))
             shutil.copytree(os.path.join(src_veh, "PhysicsMaterials"),
-                            os.path.join(content_root, "PhysicsMaterials"))
+                            os.path.join(content_root, "Vehicles",
+                                         "PhysicsMaterials"))
         if not os.path.isdir(os.path.join(content_root, "VehicleTemplate")):
             shutil.copytree(src_tpl,
                             os.path.join(content_root, "VehicleTemplate"))

@@ -276,6 +276,15 @@ and covered by synthetic round-trip tests.
       guaranteed fallback), and adds a positional `EngineLoop131`
       AmbientSound playing MS_Engine131.  Drive with the template bindings
       (WASD + gamepad).
+  - **Mount-path fix**: the vehicle FeaturePack must live at
+    `/Game/Vehicles/...` (`SharedContentPacks MountName="Vehicles"` in the
+    template's TemplateDefs.ini; every internal ref points there).  The
+    first copy to `/Game/OffroadCar` broke skeleton/physics-asset/mesh
+    imports, and - worse - the pawn duplicate was saved while imports were
+    broken, **baking a null mesh reference into the asset** (in PIE the
+    car was an invisible, physics-less hull).  Fix: content moved to
+    `Content/Vehicles/`, stale duplicate deleted, pass re-run, mesh
+    resolves (`SKM_Offroad`) and the AnimBP skeleton error is gone.
   - Headless landmines found: `compile_blueprint` AFTER CDO property
     writes RESETS the CDO from the stored template (writes lost - save
     without compiling); a duplicate referenced by a GameMode must be
