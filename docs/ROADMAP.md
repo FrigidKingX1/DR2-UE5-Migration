@@ -50,6 +50,17 @@ and covered by synthetic round-trip tests.
     flattened everything onto the first self-parented dir, dropping 387/390
     DR2 files.  Rewritten to walk `NefsArchive.tree` (same tree as `list`),
     consistent for v1.6.0 + v2.0.0.
+  - **Full `game_2_1.dat` (9.3 GB, 948 entries) unpack validated** — the largest
+    volume.  Two fixes: (1) `extract_archive` now **streams** each item from disk
+    via `extract_item_from_file` instead of loading the whole volume into RAM
+    (would need ~9.3 GB + overhead; now flat memory); (2) `detransform_chunk_v200`
+    falls back to the AES-decrypted bytes when a window is not an independent
+    raw-deflate stream (DR2 audio `.bnk` are hybrid raw/deflate Wwise banks).
+    Result: **246/246 `.bnk` are structurally valid Wwise `BKHD` banks** (section
+    chain + byte-exact sizes), 43/45 plain XML well-formed (the 2 exceptions have
+    a bare-`\r` line ending in the *source data*), plus 55 BinXml and 39 PSSG.
+    Duplicate content-pack entries share on-disk paths (last-writer-wins), so 629
+    tree files collapse to 416 unique files on extraction.
   - Every DR2 archive is NeFS v2.0.0; there are **no** `.erp` `.database`
     files in DR2 (older-EGO formats — N/A here).
 

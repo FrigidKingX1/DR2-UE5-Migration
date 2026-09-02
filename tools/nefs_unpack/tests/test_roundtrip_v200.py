@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import pytest
 
 from nefs_unpack import read_standard_archive
-from nefs_unpack.transformer import extract_item
+from nefs_unpack.transformer import detransform_chunk_v200, extract_item
 
 from _fixture_v200 import AES_KEY, build_nefs_v200
 
@@ -81,3 +81,28 @@ def test_roundtrip_v200_flags(tmp_path):
     assert not names["nested.txt"].is_zlib
     assert not names["nested.txt"].is_aes
     assert not names["nested.txt"].is_transformed
+
+
+def test_hybrid_chunk_fallback_keeps_decrypted_bytes():
+    """DR2 audio ``.bnk`` items mix raw and deflate windows under one item-level
+    ``IsZlib`` flag.  When a chunk is not an independent raw-deflate stream,
+    ``detransform_chunk_v200`` must return the AES-decrypted bytes (matching the
+    reference NefsLib behavior of failing gracefully) instead of raising."""
+    key = b"K" * 32
+    # 80 bytes (5 AES blocks) of clearly-not-deflate content so the zlib
+    # fallback path keeps the (decrypted) bytes unchanged.
+    payload = os.urandom(80)  # 80 bytes = 5 AES blocks
+    assert len(payload) % 16 == 0
+
+    # No AES: non-deflate bytes fall through unchanged (is_zlib ignored on error).
+    out = detransform_chunk_v200(payload, is_zlib=True, is_aes=False,
+                                 aes_key=None, extracted_size=10000)
+    assert out == payload
+
+    # AES + non-deflate: AES-256-ECB round trip preserves the payload.
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    enc = Cipher(algorithms.AES(key), modes.ECB()).encryptor()
+    cipher = enc.update(payload) + enc.finalize()
+    out2 = detransform_chunk_v200(cipher, is_zlib=True, is_aes=True,
+                                  aes_key=key, extracted_size=10000)
+    assert out2 == payload

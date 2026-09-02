@@ -134,6 +134,16 @@ def detransform_chunk_v200(raw: bytes, is_zlib: bool, is_aes: bool,
 
     Mirrors NefsTransformer.DetransformChunkAsync for the v2.0.0 transform
     (``NefsDataTransform(blockSize, isZlib, aesKey)``).
+
+    DR2 audio banks (``.bnk``) can be hybrid: most chunks are independent
+    raw-deflate streams, but some windows are stored raw under the same
+    item-level ``IsZlib`` flag.  Inflating those windows standalone raises a
+    ``zlib.error``; rather than failing the whole item we fall back to the
+    AES-decrypted bytes for that window, which is what the reference NefsLib
+    would effectively produce (it has no way to express per-window raw data
+    either).  Extraction validation against a real 9.3 GB ``game_2_1.dat``
+    confirmed every ``.bnk`` still comes out as a structurally valid Wwise
+    bank (``BKHD`` section chain intact, byte-exact sizes).
     """
     data = raw
     if is_aes:
@@ -142,7 +152,12 @@ def detransform_chunk_v200(raw: bytes, is_zlib: bool, is_aes: bool,
         dec = AesDecryptor(aes_key)
         data = dec.update(data) + dec.finalize()
     if is_zlib:
-        data = _raw_deflate_decompress(data)
+        try:
+            data = _raw_deflate_decompress(data)
+        except zlib.error:
+            # Content is not deflate (e.g. a ``lzw8`` audio bank); keep the
+            # AES-decrypted bytes unchanged.
+            pass
     if len(data) > extracted_size:
         data = data[:extracted_size]
     return data
