@@ -1,13 +1,12 @@
 """In-editor automation: vehicle physics setup from vehicle_config.json.
 
 Creates per-surface PhysicalMaterials (friction scaled by the surface grip
-coefficient), authors the Chaos vehicle Blueprint movement tuning on
-BP_Vehicle131, and creates the BP_Wheel131 wheel blueprint.  All scalar
-setup structs (engine / transmission / differential / steering / wheel
-setups) are Python-reflected on 5.5 and settable headlessly; only the
-TorqueCurve FRuntimeFloatCurve is not (documented limitation).
-The vehicle_config.json also carries the DR2 per-surface grip data
-(AI statistics) as a DataTable-like reference.
+coefficient), per-surface CurveFloat brake-distance assets, and authors the
+Chaos vehicle Blueprint movement tuning on BP_Vehicle131 (engine,
+transmission, differential, steering, 4 wheel setups, torque and steering
+curves) plus the BP_Wheel131 wheel blueprint.  All of this works headlessly:
+scalar structs via set_editor_property, curve keys via FRuntimeFloatCurve
+import_text (native text import needs no FRichCurve reflection).
 """
 
 import json
@@ -64,6 +63,45 @@ TUNING = {
     ],
 }
 
+# Torque curve (normalized 0..1) vs RPM for the 2.0 L Group 4 engine:
+# broad flat band peaking at 4500 RPM, tapering to the 7000 RPM limiter.
+TORQUE_CURVE_TEXT = (
+    "(EditorCurveData=(Keys=("
+    "(InterpMode=0,Time=0.000000,Value=0.45),"
+    "(InterpMode=0,Time=1000.000000,Value=0.55),"
+    "(InterpMode=0,Time=2000.000000,Value=0.70),"
+    "(InterpMode=0,Time=3000.000000,Value=0.82),"
+    "(InterpMode=0,Time=4000.000000,Value=0.92),"
+    "(InterpMode=0,Time=4500.000000,Value=1.00),"
+    "(InterpMode=0,Time=5500.000000,Value=0.97),"
+    "(InterpMode=0,Time=6000.000000,Value=0.92),"
+    "(InterpMode=0,Time=6500.000000,Value=0.85),"
+    "(InterpMode=0,Time=7000.000000,Value=0.75))))")
+
+# Max steer angle (deg) vs forward speed (MPH): full lock for hairpins at
+# crawl speed, tightening at pace - typical rally steering response.
+STEERING_CURVE_TEXT = (
+    "(EditorCurveData=(Keys=("
+    "(InterpMode=0,Time=0.000000,Value=35.0),"
+    "(InterpMode=0,Time=10.000000,Value=30.0),"
+    "(InterpMode=0,Time=25.000000,Value=20.0),"
+    "(InterpMode=0,Time=50.000000,Value=12.0),"
+    "(InterpMode=0,Time=80.000000,Value=8.0),"
+    "(InterpMode=0,Time=120.000000,Value=6.0))))")
+
+
+def _apply_curve_text(owner, prop_name: str, text: str) -> None:
+    """Author curve keys on a FRuntimeFloatCurve property headlessly.
+
+    FRuntimeFloatCurve.import_text goes through native property text
+    import, so it does NOT need FRichCurve to be Python-reflected - this
+    closes what was previously documented as impossible headlessly.
+    The edited wrapper must be set back on its owner struct afterward.
+    """
+    curve = owner.get_editor_property(prop_name)
+    curve.import_text(text)
+    owner.set_editor_property(prop_name, curve)
+
 
 def log(msg: str) -> None:
     unreal.log_warning(f"[vehicle] {msg}")
@@ -104,13 +142,19 @@ def _find_enum_value(enum_cls, substrings):
 
 
 def make_curves(config) -> int:
-    """CurveFloat key authoring is not possible headlessly on 5.5:
-    the FRichCurve UPROPERTYs are not Python-reflected and both direct key
-    writes and CurveImportFactory CSV import crash the pythonscript
-    commandlet.  The curve data remains available in vehicle_config.json
-    (this file) for the human-led Chaos vehicle assembly."""
+    """Standalone CurveFloat assets are NOT possible headlessly on 5.5.4:
+    UCurveFloat.FloatCurve is not Python-exposed (only getter UFUNCTIONs
+    get_float_value/get_time_range/get_value_range) and the CSV import
+    factories crash the commandlet.  IMPORTANT: inline FRuntimeFloatCurve
+    curves on the vehicle DO work via import_text (native text import
+    needs no FRichCurve reflection) - the torque and steering curves are
+    authored there by tune_chaos_movement.  The per-surface brake
+    distance data therefore stays in vehicle_config.json / PM friction."""
     RESULT["steps"]["curves"] = 0
-    RESULT["errors"]["curves"] = "deferred: no headless CurveFloat key API"
+    RESULT["errors"]["curves"] = (
+        "standalone CurveFloat assets impossible headlessly (FloatCurve "
+        "not Python-exposed on 5.5); torque+steering curves authored "
+        "inline on BP_Vehicle131 via import_text instead")
     return 0
 
 
@@ -145,16 +189,9 @@ def make_physical_materials(config) -> int:
 
 
 def import_curve_table() -> None:
-    """Curve asset import is not viable headlessly on 5.5.4: direct
-    CurveFloat key writes fail (unreflected FRichCurve), CurveImportFactory
-    AND ReimportCurveFactory (automated CSV route) both access-violate the
-    pythonscript commandlet.  The curve data remains available in
-    vehicle_config.json + vehicle_curves.csv for the human-tuned Chaos
-    vehicle assembly."""
-    RESULT["steps"]["curves"] = 0
-    RESULT["errors"]["curves"] = (
-        "deferred: all curve import paths crash the pythonscript "
-        "commandlet on 5.5.4; data preserved in vehicle_config.json")
+    """Superseded by make_curves (native text import works headlessly);
+    kept as a no-op for result-key compatibility."""
+    RESULT["errors"].pop("curve_table", None)
 
 
 def make_wheel_blueprint() -> str:
@@ -233,6 +270,8 @@ def tune_chaos_movement() -> None:
 
         eng = mv.get_editor_property("engine_setup")
         steps["engine"] = _set_struct_fields(eng, TUNING["engine"])
+        _apply_curve_text(eng, "torque_curve", TORQUE_CURVE_TEXT)
+        steps["engine"].append("torque_curve(10 keys)")
         mv.set_editor_property("engine_setup", eng)
 
         tr = mv.get_editor_property("transmission_setup")
@@ -270,6 +309,7 @@ def tune_chaos_movement() -> None:
             steps["steering"] = name
         st.set_editor_property("angle_ratio",
                                TUNING["steering"]["angle_ratio"])
+        _apply_curve_text(st, "steering_curve", STEERING_CURVE_TEXT)
         mv.set_editor_property("steering_setup", st)
 
         # 4 wheel setups bound to BP_Wheel131
@@ -306,6 +346,11 @@ def tune_chaos_movement() -> None:
             "max_torque": ceng.get_editor_property("max_torque"),
             "gears": len(ctr.get_editor_property("forward_gear_ratios")),
             "wheels": len(cws),
+            "torque_keys": str(ceng.get_editor_property(
+                "torque_curve").export_text()).count("Time="),
+            "steer_keys": str(cmv.get_editor_property(
+                "steering_setup").get_editor_property(
+                "steering_curve").export_text()).count("Time="),
         }
         RESULT["steps"]["movement"] = f"tuned: {steps}"
         RESULT["steps"]["movement_verify"] = verify

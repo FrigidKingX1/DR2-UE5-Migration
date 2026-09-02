@@ -237,15 +237,23 @@ and covered by synthetic round-trip tests.
     mass 1000 kg, 7000 RPM / 190 Nm engine, 5-speed auto RWD
     transmission, 4 wheel setups bound to the new **`BP_Wheel131`**
     (0.31 m radius, tuned suspension/friction), round-trip verified.
-    Provenance: the encrypted CTF cannot be decoded and
-    ai_vehicle_statistics has no engine/gear/mass data, so values are
-    real-world Fiat 131 Abarth Group 4 specs (documented approximation).
+    **Curve keys ARE authorable headlessly** after all:
+    `FRuntimeFloatCurve.import_text` goes through native property text
+    import and needs no FRichCurve reflection - the torque curve
+    (10 keys, peak 1.0 @ 4500 RPM) and steering curve (6 keys, 35 deg
+    at standstill down to 6 deg @ 120 MPH) are authored on the vehicle
+    and round-trip verified.  Provenance: the encrypted CTF cannot be
+    decoded and ai_vehicle_statistics has no engine/gear/mass data, so
+    values are real-world Fiat 131 Abarth Group 4 specs (documented
+    approximation).
   - **F4 Integration (COMPLETE)**: `assemble_level.py` spawns the tuned
     `BP_Vehicle131` into `L_CarShowroom` alongside the 105 mesh actors
     (raised Z so wheels rest on the ground plane).
 - [ ] Residual (needs interactive editor or audio perception, documented):
-      TorqueCurve/SteeringCurve keys (unreflected FRuntimeFloatCurve),
-      CurveFloat assets (commandlet AV), listening to the curated
+      standalone CurveFloat assets (`UCurveFloat.FloatCurve` is not
+      Python-exposed on 5.5 - only getter UFUNCTIONs - and the CSV import
+      factories crash the commandlet; per-surface brake data stays in
+      `vehicle_config.json`/PM friction), and listening to the curated
       `Listen_Here` engine loops to pick the final crossfade pair.
 
 ## Non-goals
