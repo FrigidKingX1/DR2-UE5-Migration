@@ -118,8 +118,31 @@ and covered by synthetic round-trip tests.
     **45 meshes / 10 materials**.  Livery + normal maps visually verified.
   - Coordinate pass-through by default; `--neg-z` applies the D3D
     left-handed → glTF right-handed conversion (negate Z, reverse winding).
-- [ ] Phase B — texture normalization + ML PBR synthesis (Ubisoft CHORD via
-      headless ComfyUI; RTX 2080 SUPER 8 GB → strictly sequential with UE)
+- [x] **Phase B — neural PBR synthesis** (`tools/pbr_synth`, 16 tests):
+  - Headless **ComfyUI service runner** (`comfy.py`): launches ComfyUI as a
+    subprocess (venv-aware, `--highvram`), submits API-format graphs to
+    `POST /prompt`, polls `GET /history/{id}`, fetches outputs via `/view`,
+    releases VRAM via `POST /free`, daemon log pump + context-manager
+    lifecycle.  Protocol covered by tests against a fake in-process server.
+  - **Ubisoft CHORD** integration (`chord_workflow.py`):
+    `LoadImage → ChordLoadModel → ChordMaterialEstimation (basecolor/normal/
+    roughness/metalness) → ChordNormalToHeight (Poisson)`.  Weights
+    `chord_v1.safetensors` (2.76 GB, sha256-verified) — canonical source is
+    the gated HF repo `Ubisoft/ubisoft-laforge-chord` (accept terms for
+    long-term use); **Ubisoft Machine Learning License**, never redistributed.
+    ComfyUI lives outside the repo at `E:\ClaudeATHome\Tools\ComfyUI`.
+  - **Legacy reconciliation** (`reconcile.py`): gloss from ``_s`` alpha (or
+    luminance fallback) → roughness `sqrt(1-gloss)`; blended
+    `0.7*CHORD + 0.3*legacy`; OpenGL→DirectX normal G-invert; **ORM packing**
+    (R=AO from ``_o``, G=blended roughness, B=CHORD metalness); 16-bit height.
+  - **Packaging**: `T_<Car>_<Part>_<D|N|ORM|H>.png` (e.g. `T_Fiat131_Body_D.png`)
+    ready for UE `TC_Masks` / `TC_Normalmap` / `TC_Grayscale` imports.
+  - Validated on the real car: **6/6 parts synthesized** (Body, Cabin, Glass,
+    Lights, Caliper, Disc → 24 files).  CHORD de-lit the livery correctly
+    (baked dirt removed, decals preserved); ORM material classes track the
+    atlas (smooth clear-coat vs rough mechanical parts).  Known limitation:
+    CHORD reads rusty/dirty albedo as dielectric, so brake discs come out
+    non-metallic — override metallic per-material in the UE Master Material.
 - [ ] Phase C — UE 5.4–5.6 headless ingest (Interchange import + Master
       Material + Material Instances + Nanite via `UnrealEditor-Cmd.exe`
       Python commandlets, driven by the export manifest)
