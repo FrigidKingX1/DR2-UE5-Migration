@@ -263,6 +263,31 @@ and covered by synthetic round-trip tests.
       `49239638.wav` from the `Listen_Here` set; `ue_ingest audio
       --engine-wave 49239638` rebuilds `MS_Engine131` bound to that
       SoundWave (exact asset-name match incl. the `SM131_` prefix).
+- [x] Phase G - drivable showroom (`ue_ingest drivable`): Blueprint graph
+      authoring is impossible headlessly, so the pass reuses the engine
+      Vehicle Advanced template's pre-wired input assets (copied into
+      Content by the CLI: `VehicleTemplate/` Blueprints + Input,
+      `OffroadCar/` skeletal mesh + physics asset + materials):
+      duplicates `OffroadCar_Pawn` as **`BP_Vehicle131_Drivable`**, creates
+      **`GM_Vehicle131`** (DefaultPawn = the drivable pawn, PlayerController
+      = `VehiclePlayerController` with its IMC/input-action bindings),
+      spawns a PlayerStart in `L_CarShowroom`, sets the WorldSettings
+      GameMode override (+ `GlobalDefaultGameMode` in DefaultGame.ini as a
+      guaranteed fallback), and adds a positional `EngineLoop131`
+      AmbientSound playing MS_Engine131.  Drive with the template bindings
+      (WASD + gamepad).
+  - Headless landmines found: `compile_blueprint` AFTER CDO property
+    writes RESETS the CDO from the stored template (writes lost - save
+    without compiling); a duplicate referenced by a GameMode must be
+    `save_loaded_asset`-ed BEFORE the referencing asset is saved (else the
+    class ref silently resolves None on fresh load); in-memory-only
+    property writes read back fine in-process, so every persistence claim
+    needs a fresh-process verification.
+- [ ] Residual (needs interactive editor or new pipeline work, documented):
+      the Fiat 131 body is still the template OffroadCar placeholder -
+      swapping in the real 131 mesh needs a SkeletalMesh + PhysicsAsset
+      (the imported 131 meshes are StaticMeshes); engine sound on the pawn
+      itself (needs an AudioComponent/RPM wiring); PIE smoke test.
 
 ## Non-goals
 - Redistribution of proprietary assets

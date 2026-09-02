@@ -76,6 +76,16 @@ def main(argv=None) -> None:
     pt.add_argument("--log", default=None)
     pt.add_argument("--timeout", type=float, default=3600.0)
 
+    pd = sub.add_parser("drivable",
+                        help="make L_CarShowroom drivable (template pawn + "
+                             "GameMode + PlayerStart)")
+    pd.add_argument("--project", required=True)
+    pd.add_argument("--ue-root", required=True,
+                    help="engine root, e.g. G:\\UE5\\UE_5.5")
+    pd.add_argument("--script", default=None)
+    pd.add_argument("--log", default=None)
+    pd.add_argument("--timeout", type=float, default=3600.0)
+
     args = p.parse_args(argv)
 
     if args.cmd == "prepare":
@@ -160,6 +170,37 @@ def main(argv=None) -> None:
                          "terrain_setup.py"),
             os.path.join(python_dir, "terrain_setup.py"))
         script = args.script or os.path.join(python_dir, "terrain_setup.py")
+    elif args.cmd == "drivable":
+        import shutil
+        # copy the engine Vehicle Advanced template assets if not present
+        template_root = os.path.join(args.ue_root, "Templates")
+        content_root = os.path.join(project_dir, "Content")
+        src_veh = os.path.join(template_root, "TemplateResources",
+                               "Standard", "Vehicles", "Content")
+        src_tpl = os.path.join(template_root, "TP_VehicleAdvBP", "Content",
+                               "VehicleTemplate")
+        if not os.path.isdir(os.path.join(content_root, "OffroadCar")):
+            shutil.copytree(os.path.join(src_veh, "OffroadCar"),
+                            os.path.join(content_root, "OffroadCar"))
+            shutil.copytree(os.path.join(src_veh, "PhysicsMaterials"),
+                            os.path.join(content_root, "PhysicsMaterials"))
+        if not os.path.isdir(os.path.join(content_root, "VehicleTemplate")):
+            shutil.copytree(src_tpl,
+                            os.path.join(content_root, "VehicleTemplate"))
+        # guaranteed GameMode fallback (world-settings override may fail)
+        ini_path = os.path.join(project_dir, "Config", "DefaultGame.ini")
+        line = ("[/Script/EngineSettings.GameMapsSettings]\n"
+                "GlobalDefaultGameMode=/Game/Import/Vehicle/GM_Vehicle131"
+                ".GM_Vehicle131_C\n")
+        if not (os.path.exists(ini_path) and line.splitlines()[1]
+                in open(ini_path, encoding="utf-8").read()):
+            with open(ini_path, "a", encoding="utf-8") as fh:
+                fh.write(("\n" if os.path.exists(ini_path) else "") + line)
+        shutil.copyfile(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "drivable_setup.py"),
+            os.path.join(python_dir, "drivable_setup.py"))
+        script = args.script or os.path.join(python_dir, "drivable_setup.py")
     else:
         default_script = {"assemble": "assemble_level.py",
                           "import": "ue_script.py"}[args.cmd]
