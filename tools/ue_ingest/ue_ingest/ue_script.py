@@ -189,12 +189,130 @@ def build_master_material(manifest) -> unreal.Material:
                                   unreal.MaterialProperty.MP_AMBIENT_OCCLUSION)
     mel.connect_material_property(orm, "G",
                                   unreal.MaterialProperty.MP_ROUGHNESS)
-    mel.connect_material_property(orm, "B",
-                                  unreal.MaterialProperty.MP_METALLIC)
+
+    # Metallic = ORM.B boosted by a per-instance MetallicOverride scalar, so
+    # parts CHORD misreads as dielectric (rusty brake discs) can be forced.
+    metal = mel.create_material_expression(
+        mat, unreal.MaterialExpressionAdd, -300, 260)
+    orm_b = mel.create_material_expression(
+        mat, unreal.MaterialExpressionComponentMask, -460, 300)
+    mel.connect_material_expressions(orm, "B", orm_b, "")
+    orm_b.set_editor_property("r", False)
+    orm_b.set_editor_property("g", False)
+    orm_b.set_editor_property("b", True)
+    orm_b.set_editor_property("a", False)
+    override = mel.create_material_expression(
+        mat, unreal.MaterialExpressionScalarParameter, -460, 380)
+    override.set_editor_property("parameter_name", "MetallicOverride")
+    override.set_editor_property("default_value", 0.0)
+    mel.connect_material_expressions(orm_b, "", metal, "A")
+    mel.connect_material_expressions(override, "", metal, "B")
+    mel.connect_material_property(metal, "", unreal.MaterialProperty.MP_METALLIC)
 
     mel.recompile_material(mat)
     al.save_loaded_asset(mat)
     return mat
+
+
+def _shading_model_enum(name: str):
+    """Find the shading-model enum type across UE Python versions."""
+    for type_name in ("MaterialShadingModel", "ShadingModel",
+                      "EMaterialShadingModel"):
+        enum_type = getattr(unreal, type_name, None)
+        if enum_type is not None and hasattr(enum_type, name):
+            return getattr(enum_type, name)
+    return None
+
+
+def build_special_materials() -> dict:
+    """Glass (translucent) and lights (emissive) masters + reparent MIs."""
+    mel = unreal.MaterialEditingLibrary
+    al = unreal.EditorAssetLibrary
+    masters = {}
+
+    glass_path = f"{ROOT}/Materials/M_CarGlass"
+    if al.does_asset_exist(glass_path):
+        masters["glass"] = al.load_asset(glass_path)
+    else:
+        glass = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+            "M_CarGlass", f"{ROOT}/Materials", unreal.Material,
+            unreal.MaterialFactoryNew())
+        sm_enum = _shading_model_enum("TRANSLUCENT")
+        if sm_enum is not None:
+            glass.set_editor_property("shading_model", sm_enum)
+        glass.set_editor_property("blend_mode",
+                                  unreal.BlendMode.BLEND_TRANSLUCENT)
+        base = mel.create_material_expression(
+            glass, unreal.MaterialExpressionTextureSampleParameter2D,
+            -500, -100)
+        base.set_editor_property("parameter_name", "BaseColorTex")
+        base.set_editor_property("sampler_type",
+                                 unreal.MaterialSamplerType.SAMPLERTYPE_COLOR)
+        mel.connect_material_property(base, "RGB",
+                                      unreal.MaterialProperty.MP_BASE_COLOR)
+        opacity = mel.create_material_expression(
+            glass, unreal.MaterialExpressionScalarParameter, -500, 100)
+        opacity.set_editor_property("parameter_name", "Opacity")
+        opacity.set_editor_property("default_value", 0.3)
+        mel.connect_material_property(opacity, "",
+                                      unreal.MaterialProperty.MP_OPACITY)
+        rough = mel.create_material_expression(
+            glass, unreal.MaterialExpressionScalarParameter, -500, 200)
+        rough.set_editor_property("parameter_name", "Roughness")
+        rough.set_editor_property("default_value", 0.05)
+        mel.connect_material_property(rough, "",
+                                      unreal.MaterialProperty.MP_ROUGHNESS)
+        mel.recompile_material(glass)
+        al.save_loaded_asset(glass)
+        masters["glass"] = glass
+
+    lights_path = f"{ROOT}/Materials/M_CarLights"
+    if al.does_asset_exist(lights_path):
+        masters["lights"] = al.load_asset(lights_path)
+    else:
+        lights = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+            "M_CarLights", f"{ROOT}/Materials", unreal.Material,
+            unreal.MaterialFactoryNew())
+        base = mel.create_material_expression(
+            lights, unreal.MaterialExpressionTextureSampleParameter2D,
+            -500, -100)
+        base.set_editor_property("parameter_name", "BaseColorTex")
+        base.set_editor_property("sampler_type",
+                                 unreal.MaterialSamplerType.SAMPLERTYPE_COLOR)
+        mel.connect_material_property(base, "RGB",
+                                      unreal.MaterialProperty.MP_BASE_COLOR)
+        boost = mel.create_material_expression(
+            lights, unreal.MaterialExpressionScalarParameter, -500, 100)
+        boost.set_editor_property("parameter_name", "EmissiveBoost")
+        boost.set_editor_property("default_value", 4.0)
+        mul = mel.create_material_expression(
+            lights, unreal.MaterialExpressionMultiply, -300, 0)
+        mel.connect_material_expressions(base, "RGB", mul, "A")
+        mel.connect_material_expressions(boost, "", mul, "B")
+        mel.connect_material_property(mul, "",
+                                      unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+        mel.recompile_material(lights)
+        al.save_loaded_asset(lights)
+        masters["lights"] = lights
+
+    step_ok("special_materials", sorted(masters))
+    return masters
+
+
+def reparent_special_instances(instances, masters, manifest) -> int:
+    """Switch glass/lights MIs onto their dedicated masters."""
+    count = 0
+    part_by_shader = {}
+    for mat_def in manifest["materials"]:
+        part_by_shader[mat_def["shader"]] = mat_def["part"].lower()
+    for shader, mi in instances.items():
+        part = part_by_shader.get(shader, "")
+        if part in masters:
+            mi.set_editor_property("parent", masters[part])
+            unreal.EditorAssetLibrary.save_loaded_asset(mi)
+            count += 1
+    step_ok("reparent_special", count)
+    return count
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +351,25 @@ def build_material_instances(manifest, textures, master) -> dict:
         instances[mat_def["shader"]] = mi
     step_ok("material_instances", sorted(instances))
     return instances
+
+
+def _apply_metallic_overrides(instances) -> int:
+    """Per-part metallic overrides (CHORD reads rusty albedo as dielectric)."""
+    overrides = {"disc": 1.0, "caliper": 0.6}
+    applied = 0
+    seen = set()
+    for shader, mi in instances.items():
+        part = mi.get_name().replace("MI_", "").lower()
+        if part in seen or part not in overrides:
+            continue
+        seen.add(part)
+        unreal.MaterialEditingLibrary. \
+            set_material_instance_scalar_parameter_value(
+                mi, "MetallicOverride", overrides[part])
+        unreal.EditorAssetLibrary.save_loaded_asset(mi)
+        applied += 1
+    step_ok("metallic_overrides", applied)
+    return applied
 
 
 def assign_materials(meshes, instances) -> int:
@@ -357,6 +494,16 @@ def main() -> None:
             instances = build_material_instances(manifest, textures, master)
         except Exception as exc:
             fail("material_instances", exc)
+    if instances:
+        try:
+            masters = build_special_materials()
+            reparent_special_instances(instances, masters, manifest)
+        except Exception as exc:
+            fail("special_materials", exc)
+        try:
+            _apply_metallic_overrides(instances)
+        except Exception as exc:
+            fail("metallic_overrides", exc)
     if instances and meshes:
         try:
             assign_materials(meshes, instances)

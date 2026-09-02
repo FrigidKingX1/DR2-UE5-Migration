@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 
@@ -40,6 +41,37 @@ def main(argv=None) -> None:
     pa.add_argument("--log", default=None)
     pa.add_argument("--timeout", type=float, default=3600.0)
 
+    pv = sub.add_parser("vehicle", help="import vehicle physics config")
+    pv.add_argument("--project", required=True)
+    pv.add_argument("--ue-root", required=True,
+                    help="engine root, e.g. G:\\UE5\\UE_5.5")
+    pv.add_argument("--config", required=True,
+                    help="vehicle_config.json from ctf_convert ai-to-config")
+    pv.add_argument("--script", default=None)
+    pv.add_argument("--log", default=None)
+    pv.add_argument("--timeout", type=float, default=3600.0)
+
+    pau = sub.add_parser("audio", help="import WAVs + attempt MetaSound")
+    pau.add_argument("--project", required=True)
+    pau.add_argument("--ue-root", required=True,
+                     help="engine root, e.g. G:\\UE5\\UE_5.5")
+    pau.add_argument("--wav-dir", required=True,
+                     help="folder of transcoded .wav files")
+    pau.add_argument("--car", default="131")
+    pau.add_argument("--script", default=None)
+    pau.add_argument("--log", default=None)
+    pau.add_argument("--timeout", type=float, default=3600.0)
+
+    pt = sub.add_parser("terrain", help="import terrain glTF + place in level")
+    pt.add_argument("--project", required=True)
+    pt.add_argument("--ue-root", required=True,
+                    help="engine root, e.g. G:\\UE5\\UE_5.5")
+    pt.add_argument("--gltf", required=True,
+                    help="terrain glTF from heightfield_extract --gltf")
+    pt.add_argument("--script", default=None)
+    pt.add_argument("--log", default=None)
+    pt.add_argument("--timeout", type=float, default=3600.0)
+
     args = p.parse_args(argv)
 
     if args.cmd == "prepare":
@@ -53,10 +85,79 @@ def main(argv=None) -> None:
     from ue_ingest import run_import
 
     project_dir = os.path.dirname(os.path.abspath(args.project))
-    default_script = {"assemble": "assemble_level.py",
-                      "import": "ue_script.py"}[args.cmd]
-    script = args.script or os.path.join(project_dir, "Content", "Python",
-                                         default_script)
+    python_dir = os.path.join(project_dir, "Content", "Python")
+    os.makedirs(python_dir, exist_ok=True)
+
+    if args.cmd == "vehicle":
+        import shutil
+        shutil.copyfile(os.path.abspath(args.config),
+                        os.path.join(python_dir, "vehicle_config.json"))
+        shutil.copyfile(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "vehicle_config.py"),
+            os.path.join(python_dir, "vehicle_config.py"))
+        # generate per-surface curve CSVs (curve-editor export format) for
+        # ReimportCurveFactory automated import
+        with open(os.path.join(python_dir, "vehicle_config.json"), "r",
+                  encoding="utf-8") as fh:
+            config = json.load(fh)
+        surfaces = {code: s.get("grip", {}).get("speed_distances") or []
+                    for code, s in config.get("surfaces", {}).items()}
+        surfaces = {c: s for c, s in surfaces.items() if s}
+        if surfaces:
+            csv_dir = os.path.join(python_dir, "curves_csv")
+            os.makedirs(csv_dir, exist_ok=True)
+            for code, samples in surfaces.items():
+                csv_path = os.path.join(csv_dir, f"CF_Brake_{code}.csv")
+                with open(csv_path, "w", encoding="utf-8") as fh:
+                    fh.write(",X,Y\n")
+                    for smp in sorted(samples,
+                                      key=lambda x: x["speed_mps"]):
+                        fh.write(f",{smp['speed_mps']},{smp['distance_m']}\n")
+        script = args.script or os.path.join(python_dir, "vehicle_config.py")
+    elif args.cmd == "audio":
+        import shutil
+        tools_dir = os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))
+        sibling = os.path.join(tools_dir, "pbr_synth")
+        if os.path.isdir(sibling) and sibling not in sys.path:
+            sys.path.insert(0, sibling)
+        from ue_ingest.audio_prep import write_audio_manifest
+        from pbr_synth import reconcile
+        manifest = write_audio_manifest(
+            args.wav_dir, os.path.join(python_dir, "audio_manifest.json"),
+            bank_name="s_mech")
+        with open(manifest, "r", encoding="utf-8") as fh:
+            audio = json.load(fh)
+        audio["car_display"] = reconcile.display_car_name(args.car)
+        with open(manifest, "w", encoding="utf-8") as fh:
+            json.dump(audio, fh, indent=2)
+        shutil.copyfile(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "audio_setup.py"),
+            os.path.join(python_dir, "audio_setup.py"))
+        script = args.script or os.path.join(python_dir, "audio_setup.py")
+    elif args.cmd == "terrain":
+        import shutil
+        gltf_abs = os.path.abspath(args.gltf)
+        gltf_name = os.path.basename(gltf_abs)
+        bin_name = os.path.splitext(gltf_name)[0] + ".bin"
+        shutil.copyfile(gltf_abs, os.path.join(python_dir, gltf_name))
+        shutil.copyfile(os.path.splitext(gltf_abs)[0] + ".bin",
+                        os.path.join(python_dir, bin_name))
+        with open(os.path.join(python_dir, "terrain_manifest.json"), "w",
+                  encoding="utf-8") as fh:
+            json.dump({"gltf_file": os.path.join(python_dir, gltf_name)},
+                      fh)
+        shutil.copyfile(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "terrain_setup.py"),
+            os.path.join(python_dir, "terrain_setup.py"))
+        script = args.script or os.path.join(python_dir, "terrain_setup.py")
+    else:
+        default_script = {"assemble": "assemble_level.py",
+                          "import": "ue_script.py"}[args.cmd]
+        script = args.script or os.path.join(python_dir, default_script)
     rc = run_import(args.ue_root, args.project, script,
                     log_path=args.log, timeout=args.timeout)
     print(f"editor exit code: {rc}")

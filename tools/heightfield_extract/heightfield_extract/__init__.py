@@ -100,6 +100,121 @@ def heightmap_png_bytes(parsed: dict) -> bytes | None:
     return imagecodecs.png_encode(np.ascontiguousarray(img))
 
 
+def terrain_to_gltf_files(heightfield_path: str, out_dir: str,
+                          base_name: str | None = None,
+                          grid_step_m: float = 1.0) -> str:
+    """Convert the heightfield grid to a glTF 2.0 terrain mesh (.gltf+.bin).
+
+    Vertices are placed in metres (elevations are stored in centimetres and
+    shifted so the minimum is 0), normals come from central differences, UVs
+    map the unit square (for the heightmap texture overlay), and indices
+    cover two triangles per grid cell.
+    """
+    with open(heightfield_path, "rb") as fh:
+        data = fh.read()
+    parsed = parse_heightfield(data)
+    w, h = parsed["width"], parsed["height"]
+    grid = parsed["grid"]
+
+    lo = min(min(row) for row in grid)
+    positions = []
+    normals = []
+
+    def sample(x, y):
+        x = max(0, min(w - 1, x))
+        y = max(0, min(h - 1, y))
+        return grid[y][x]
+
+    for y in range(h):
+        for x in range(w):
+            z_m = (sample(x, y) - lo) / 100.0
+            positions.append((x * grid_step_m, z_m, -y * grid_step_m))
+            dzdx = (sample(x + 1, y) - sample(x - 1, y)) / 200.0
+            dzdy = (sample(x, y + 1) - sample(x, y - 1)) / 200.0
+            n = (-dzdx, 1.0, dzdy)
+            norm = (n[0] ** 2 + n[1] ** 2 + n[2] ** 2) ** 0.5 or 1.0
+            normals.append((n[0] / norm, n[1] / norm, n[2] / norm))
+
+    uvs = [(x / (w - 1), y / (h - 1)) for y in range(h) for x in range(w)]
+
+    indices = []
+    for y in range(h - 1):
+        for x in range(w - 1):
+            a = y * w + x
+            b = a + 1
+            c = a + w
+            d = c + 1
+            indices.extend([a, c, b, b, c, d])
+
+    os.makedirs(out_dir, exist_ok=True)
+    base = base_name or os.path.splitext(
+        os.path.basename(heightfield_path))[0]
+
+    buffer = bytearray()
+    views = []
+    accessors = []
+
+    def add_view(blob, target):
+        while len(buffer) % 4:
+            buffer.append(0)
+        offset = len(buffer)
+        buffer.extend(blob)
+        views.append({"buffer": 0, "byteOffset": offset,
+                      "byteLength": len(blob), "target": target})
+        return len(views) - 1
+
+    import struct as _struct
+    pos_blob = b"".join(_struct.pack("<3f", *p) for p in positions)
+    pos_min = [min(p[i] for p in positions) for i in range(3)]
+    pos_max = [max(p[i] for p in positions) for i in range(3)]
+    accessors.append({"bufferView": add_view(pos_blob, 34962),
+                      "componentType": 5126, "count": len(positions),
+                      "type": "VEC3", "min": pos_min, "max": pos_max})
+    attrs = {"POSITION": 0}
+
+    accessors.append({"bufferView": add_view(
+        b"".join(_struct.pack("<3f", *n) for n in normals), 34962),
+        "componentType": 5126, "count": len(normals), "type": "VEC3"})
+    attrs["NORMAL"] = 1
+
+    accessors.append({"bufferView": add_view(
+        b"".join(_struct.pack("<2f", *u) for u in uvs), 34962),
+        "componentType": 5126, "count": len(uvs), "type": "VEC2"})
+    attrs["TEXCOORD_0"] = 2
+
+    if max(indices) < 65536:
+        idx_blob = _struct.pack(f"<{len(indices)}H", *indices)
+        comp = 5123
+    else:
+        idx_blob = _struct.pack(f"<{len(indices)}I", *indices)
+        comp = 5125
+    accessors.append({"bufferView": add_view(idx_blob, 34963),
+                      "componentType": comp, "count": len(indices),
+                      "type": "SCALAR"})
+
+    doc = {
+        "asset": {"version": "2.0",
+                  "generator": "heightfield_extract terrain exporter"},
+        "scene": 0,
+        "scenes": [{"nodes": [0]}],
+        "nodes": [{"mesh": 0, "name": f"{base}_terrain"}],
+        "meshes": [{"name": f"{base}_terrain",
+                    "primitives": [{"attributes": attrs, "indices": 3,
+                                    "mode": 4}]}],
+        "accessors": accessors,
+        "bufferViews": views,
+        "buffers": [{"byteLength": len(buffer)}],
+    }
+    with open(os.path.join(out_dir, f"{base}_terrain.bin"), "wb") as fh:
+        fh.write(bytes(buffer))
+    doc["buffers"][0]["uri"] = f"{base}_terrain.bin"
+    gltf_path = os.path.join(out_dir, f"{base}_terrain.gltf")
+    with open(gltf_path, "w", encoding="utf-8") as fh:
+        import json
+        json.dump(doc, fh)
+    return gltf_path
+
+
 def extract_to_png(heightfield_path: str, out_dir: str,
                    base_name: str | None = None) -> str:
     """Parse a .heightfield and write <base>_heightmap.png + manifest."""

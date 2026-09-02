@@ -179,8 +179,40 @@ and covered by synthetic round-trip tests.
     component.  `set_actor_rotation` requires the `teleport_physics` arg.
   - **Validated: 105 car actors + ground + 6-piece lighting rig, level saved,
     0 errors** (`assemble_result.json`).
-- [ ] Human-led remainder: visual/material polish, Chaos vehicle physics from
-      the extracted `131.ctf`, terrain/Landscape rebuild, MetaSounds.
+- [x] **Phase E — human-led gaps closed autonomously**:
+  - **Audio pipeline**: vgmstream-cli (external, `E:\ClaudeATHome\Tools\vgmstream`)
+    transcodes the 100 extracted WEMs to WAV -> imported as **100
+    SoundWaves** (`ue_ingest audio`) -> **MS_Engine131** MetaSoundSource
+    asset created via MetaSoundSourceFactory.  Graph authoring deferred:
+    `find_or_begin_building` returns an unusable Python wrapper in 5.5.4
+    commandlets, and `get_editor_subsystem(MetaSoundBuilderSubsystem)` is
+    rejected ('must be a Class' despite static_class).
+  - **Vehicle data in-engine**: 8 `PM_<surface>` PhysicalMaterials +
+    **`BP_Vehicle131`** Chaos vehicle Blueprint (WheeledVehiclePawn parent,
+    created + compiled via BlueprintFactory/BlueprintEditorLibrary; note the
+    engine plugin is `ChaosVehiclesPlugin` under Experimental).  CurveFloat
+    assets are impossible headlessly on 5.5.4 (unreflected FRichCurve;
+    CurveImportFactory AND ReimportCurveFactory CSV import both
+    access-violate the commandlet) — braking curves stay in
+    `vehicle_config.json`/`vehicle_curves.csv` inside the project.
+  - **Terrain in-engine**: `heightfield_extract --gltf` exports the 300x287
+    grid as a glTF terrain mesh (m, normals, UVs) -> imported via Interchange
+    and spawned into `L_CarShowroom` as a Nanite-enabled StaticMesh
+    (`Terrain_AustraliaRally01`).  Staging must preserve the original
+    glTF/bin basenames (buffer URI).
+  - Commandlet landmine confirmed twice: `spawn_actor_from_object`
+    access-violates under `-run=pythonscript`; always
+    `spawn_actor_from_class(StaticMeshActor)` + `set_static_mesh`.
+  - **Final state of the UE project** (`E:\ClaudeATHome\Projects\UE\CarImport`):
+    L_CarShowroom contains the fully materialized Fiat 131 Abarth '77
+    (105 actors, polished PBR materials incl. glass/lights/metallic
+    overrides) standing on real imported Australian rally terrain with the
+    Lumen lighting rig; /Game/Import also holds 100 SoundWaves,
+    MS_Engine131, 8 surface PhysicalMaterials and BP_Vehicle131.
+- [ ] Residual (needs engine source or interactive editor, documented):
+      ChaosWheeledVehicleMovementComponent wheel/engine struct tuning,
+      MetaSound node graph authoring, CurveFloat keys, WEM->Vorbis quality
+      verification by ear.
 
 ## Non-goals
 - Redistribution of proprietary assets
