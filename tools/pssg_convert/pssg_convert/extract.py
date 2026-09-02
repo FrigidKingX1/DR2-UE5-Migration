@@ -33,6 +33,9 @@ def _attr(elem, name, default=None):
 
 def _attr_str(elem, name, default=""):
     v = _attr(elem, name, default)
+    if isinstance(v, bytes):
+        # Schema-type mismatches surface as raw bytes (size-authoritative read).
+        return v.decode("utf-8", errors="replace").rstrip("\x00")
     return v if isinstance(v, str) else str(v)
 
 
@@ -235,16 +238,16 @@ class RenderDataSourceReader:
     @staticmethod
     def _split_st(attr):
         t = attr.data_type
-        prefix = t[:5]  # "float" or "half"
         if t in ("float2", "half2"):
             return [attr]
         if t in ("float4", "half4"):
             # second set begins at offset + vec2 size (4 bytes for half2,
             # 8 bytes for float2)
+            base = "float" if t == "float4" else "half"
             inner = 4 if t == "half4" else 8
-            a1 = VertexAttribute(attr.name, prefix + "2", attr.element_count,
+            a1 = VertexAttribute(attr.name, base + "2", attr.element_count,
                                  attr.offset, attr.stride, attr.data)
-            a2 = VertexAttribute(attr.name, prefix + "2", attr.element_count,
+            a2 = VertexAttribute(attr.name, base + "2", attr.element_count,
                                  attr.offset + inner, attr.stride, attr.data)
             return [a1, a2]
         raise PssgConvertError(f"unsupported ST data type '{t}'")
@@ -354,6 +357,7 @@ class MeshPrimitive:
 
 _NODE_TYPE_NAMES = frozenset({
     "NODE",
+    "ROOTNODE",
     "VISIBLERENDERNODE",
     "RENDERNODE",
     "MATRIXPALETTENODE",

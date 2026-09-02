@@ -107,20 +107,32 @@ class _Reader:
                 name, pssg_type, size, self._read_attribute_value(pssg_type, size)))
 
     def _read_attribute_value(self, pssg_type: int, size: int):
-        if pssg_type == ATTR_INT:
-            return self._i32()
+        # The declared size is authoritative for stream consumption; typed
+        # interpretation applies only when the size matches the encoding.
+        # This mirrors EgoEngineLibrary, where binary-schema attributes default
+        # to Unknown -> ReadBytes(size), and guards against real DR2 files in
+        # which a name-guessed Int attribute actually carries a length-prefixed
+        # string (size 11-14), which previously desynced the stream.
+        raw = self._bytes(size)
+        if pssg_type == ATTR_INT and size == 4:
+            return struct.unpack_from(">i", raw)[0]
+        if pssg_type == ATTR_FLOAT and size == 4:
+            return struct.unpack_from(">f", raw)[0]
+        if pssg_type == ATTR_FLOAT2 and size == 8:
+            return struct.unpack_from(">2f", raw)
+        if pssg_type == ATTR_FLOAT3 and size == 12:
+            return struct.unpack_from(">3f", raw)
+        if pssg_type == ATTR_FLOAT4 and size == 16:
+            return struct.unpack_from(">4f", raw)
         if pssg_type == ATTR_STRING:
-            return self._pssg_string()
-        if pssg_type == ATTR_FLOAT:
-            return self._f32()
-        if pssg_type == ATTR_FLOAT2:
-            return (self._f32(), self._f32())
-        if pssg_type == ATTR_FLOAT3:
-            return (self._f32(), self._f32(), self._f32())
-        if pssg_type == ATTR_FLOAT4:
-            return (self._f32(), self._f32(), self._f32(), self._f32())
-        # Unknown -> raw bytes
-        return self._bytes(size)
+            if size >= 4:
+                n = struct.unpack_from(">i", raw)[0]
+                if 0 <= n and 4 + n == size:
+                    return raw[4:].decode(ENCODING, errors="replace")
+            if 0 < size < 4:
+                return raw.decode(ENCODING, errors="replace")
+        # Unknown type, or size/type mismatch: keep the raw bytes.
+        return raw
 
     def _read_element(self, parent: PssgElement | None) -> PssgElement:
         elem_id = self._i32() - 1
