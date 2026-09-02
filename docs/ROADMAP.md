@@ -254,12 +254,15 @@ and covered by synthetic round-trip tests.
   - **F4 Integration (COMPLETE)**: `assemble_level.py` spawns the tuned
     `BP_Vehicle131` into `L_CarShowroom` alongside the 105 mesh actors
     (raised Z so wheels rest on the ground plane).
-- [ ] Residual (needs interactive editor or audio perception, documented):
+- [ ] Residual (needs interactive editor, documented):
       standalone CurveFloat assets (`UCurveFloat.FloatCurve` is not
       Python-exposed on 5.5 - only getter UFUNCTIONs - and the CSV import
       factories crash the commandlet; per-surface brake data stays in
-      `vehicle_config.json`/PM friction), and listening to the curated
-      `Listen_Here` engine loops to pick the final crossfade pair.
+      `vehicle_config.json`/PM friction).
+- [x] By-ear engine pick (the human-in-the-loop step): the user chose
+      `49239638.wav` from the `Listen_Here` set; `ue_ingest audio
+      --engine-wave 49239638` rebuilds `MS_Engine131` bound to that
+      SoundWave (exact asset-name match incl. the `SM131_` prefix).
 
 ## Non-goals
 - Redistribution of proprietary assets

@@ -58,6 +58,10 @@ def main(argv=None) -> None:
     pau.add_argument("--wav-dir", required=True,
                      help="folder of transcoded .wav files")
     pau.add_argument("--car", default="131")
+    pau.add_argument("--engine-wave", default=None,
+                     help="WAV file stem of the user-picked engine loop "
+                          "(by-ear choice from Listen_Here); overrides the "
+                          "longest-wave heuristic")
     pau.add_argument("--script", default=None)
     pau.add_argument("--log", default=None)
     pau.add_argument("--timeout", type=float, default=3600.0)
@@ -130,6 +134,8 @@ def main(argv=None) -> None:
         with open(manifest, "r", encoding="utf-8") as fh:
             audio = json.load(fh)
         audio["car_display"] = reconcile.display_car_name(args.car)
+        if args.engine_wave:
+            audio["engine_wave"] = args.engine_wave
         with open(manifest, "w", encoding="utf-8") as fh:
             json.dump(audio, fh, indent=2)
         shutil.copyfile(

@@ -1,4 +1,4 @@
-"""In-editor automation: DR2 vehicle audio import + MetaSound authoring.
+﻿"""In-editor automation: DR2 vehicle audio import + MetaSound authoring.
 
 1. Import the transcoded WAV set as SoundWaves (/Game/Import/<Car>/Audio).
 2. Author the MS_Engine131 MetaSoundSource graph headlessly: one looping
@@ -166,7 +166,7 @@ def author_engine_metasound(engine_wave_path: str, dest: str) -> str:
     return new_object.get_path_name()
 
 
-def try_meta_sound(imported: dict) -> None:
+def try_meta_sound(manifest: dict) -> None:
     """Create MS_Engine131 + author the engine WavePlayer graph."""
     al = unreal.EditorAssetLibrary
     at = unreal.AssetToolsHelpers.get_asset_tools()
@@ -186,7 +186,9 @@ def try_meta_sound(imported: dict) -> None:
             RESULT["steps"]["metasound"] = "seed create failed"
             return
 
-    # pick the engine candidate: prefer the longest SoundWave in the Audio dir
+    # pick the engine candidate: the user's by-ear pick (manifest
+    # engine_wave, a WAV file stem) if present, else the longest SoundWave
+    picked = manifest.get("engine_wave")
     engine_wave = None
     longest = -1
     reg = unreal.AssetRegistryHelpers.get_asset_registry()
@@ -194,6 +196,10 @@ def try_meta_sound(imported: dict) -> None:
         obj = ad.get_asset()
         if obj is None or obj.get_class().get_name() != "SoundWave":
             continue
+        if picked and (ad.asset_name == picked
+                       or str(ad.asset_name).endswith(picked)):
+            engine_wave = obj
+            break
         try:
             dur = float(obj.get_duration())
         except Exception:
@@ -204,7 +210,7 @@ def try_meta_sound(imported: dict) -> None:
         RESULT["steps"]["metasound"] = "no SoundWave to bind"
         return
     log(f"engine candidate: {engine_wave.get_path_name()} "
-        f"(duration {longest:.2f}s)")
+        f"({'user pick' if picked else 'longest'})")
     author_engine_metasound(engine_wave.get_path_name(), f"{DEST}/Audio")
 
 
@@ -223,7 +229,7 @@ def main() -> None:
         imported = {}
 
     try:
-        try_meta_sound(imported)
+        try_meta_sound(manifest)
     except Exception as exc:
         fail("metasound", exc)
 
