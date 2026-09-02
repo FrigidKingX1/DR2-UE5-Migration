@@ -1,0 +1,318 @@
+"""EGO PSSG (binary scene graph) format constants.
+
+PSSG files are big-endian; strings use Latin-1 (byte 0-255 as chars);
+element/attribute ids are 1-based indexes into per-file schema tables.
+
+Reference: EgoEngineLibrary/Graphics/Pssg (Ego-Engine-Modding, MIT).
+"""
+
+from __future__ import annotations
+
+MAGIC = b"PSSG"
+ENCODING = "latin-1"
+
+# PssgElementType
+ELEMENT_UNKNOWN = 0
+ELEMENT_NONE = 1
+ELEMENT_FLOAT = 2
+ELEMENT_UINT = 3
+ELEMENT_SHORT = 4
+ELEMENT_USHORT = 5
+ELEMENT_BYTE = 6
+ELEMENT_INT = 7
+ELEMENT_HALF = 8
+
+# PssgAttributeType
+ATTR_UNKNOWN = 0
+ATTR_INT = 1
+ATTR_STRING = 2
+ATTR_FLOAT = 3
+ATTR_FLOAT2 = 4
+ATTR_FLOAT3 = 5
+ATTR_FLOAT4 = 6
+
+_INT_TO_ATTR = {
+    ATTR_UNKNOWN: "Unknown",
+    ATTR_INT: "Int",
+    ATTR_STRING: "String",
+    ATTR_FLOAT: "Float",
+    ATTR_FLOAT2: "Float2",
+    ATTR_FLOAT3: "Float3",
+    ATTR_FLOAT4: "Float4",
+}
+_ATTR_TO_INT = {v: k for k, v in _INT_TO_ATTR.items()}
+
+# Elements that are always treated as data elements even when the schema
+# marks them as containers (see PssgElement.ReadBinary).
+DATA_ELEMENT_NAME_OVERRIDES = frozenset({
+    "DATABLOCKBUFFERED",
+    "NeAnimPacketData_B1",
+    "NeAnimPacketData_B4",
+    "RENDERINTERFACEBOUNDBUFFERED",
+})
+
+# Static schema: element name -> PssgElementType name (taken from the C#
+# schema classes).  Unknown element types fall back to a byte-scanned check.
+ELEMENT_SCHEMA = {
+    "BOUNDINGBOX": "Float",
+    "BUNDLENODE": "None",
+    "CGSTREAM": "None",
+    "CUBEMAPTEXTURE": "None",
+    "DATA": "Byte",
+    "DATABLOCK": "None",
+    "DATABLOCKDATA": "Byte",
+    "DATABLOCKSTREAM": "None",
+    "FEATLASINFO": "None",
+    "FEATLASINFODATA": "None",
+    "INDEXSOURCEDATA": "Byte",
+    "INVERSEBINDMATRIX": "Float",
+    "JOINTNODE": "None",
+    "LAYER": "None",
+    "LIBRARY": "None",
+    "LODNODE": "None",
+    "LODRENDERINSTANCELIST": "None",
+    "LODRENDERINSTANCES": "None",
+    "LODRENDERNODE": "None",
+    "LODSKINNODE": "None",
+    "LODVISIBLERENDERNODE": "None",
+    "MATRIXPALETTEBUNDLENODE": "None",
+    "MATRIXPALETTEJOINTNODE": "None",
+    "MATRIXPALETTEJOINTRENDERINSTANCE": "None",
+    "MATRIXPALETTENODE": "None",
+    "MATRIXPALETTERENDERINSTANCE": "None",
+    "MATRIXPALETTESKINJOINT": "None",
+    "MODIFIERNETWORKINSTANCE": "None",
+    "MODIFIERNETWORKINSTANCECOMPILE": "None",
+    "MODIFIERNETWORKINSTANCEMODIFIERINPUT": "None",
+    "MODIFIERNETWORKINSTANCEUNIQUEMODIFIERINPUT": "UInt",
+    "NODE": "None",
+    "PNSTRING": "None",
+    "PSSGDATABASE": "None",
+    "RENDERDATASOURCE": "None",
+    "RENDERINDEXSOURCE": "None",
+    "RENDERINSTANCE": "None",
+    "RENDERINSTANCESOURCE": "None",
+    "RENDERINTERFACEBOUND": "None",
+    "RENDERNODE": "None",
+    "RENDERSTREAM": "None",
+    "RENDERSTREAMINSTANCE": "None",
+    "ROOTNODE": "None",
+    "SEGMENTSET": "None",
+    "SHADERGROUP": "None",
+    "SHADERGROUPPASS": "None",
+    "SHADERINPUT": "Byte",
+    "SHADERINPUTDEFINITION": "None",
+    "SHADERINSTANCE": "None",
+    "SHADERPROGRAM": "None",
+    "SHADERPROGRAMCODE": "None",
+    "SHADERPROGRAMCODEBLOCK": "Byte",
+    "SHADERSTREAMDEFINITION": "None",
+    "SKELETON": "None",
+    "SKINJOINT": "None",
+    "SKINNODE": "None",
+    "TEXTURE": "None",
+    "TEXTUREIMAGE": "Byte",
+    "TEXTUREIMAGEBLOCK": "None",
+    "TEXTUREIMAGEBLOCKDATA": "Byte",
+    "TEXTUREMIPMAP": "Byte",
+    "TRANSFORM": "Float",
+    "USERDATA": "Unknown",
+    "VISIBLERENDERNODE": "None",
+    "XXX": "None",
+}
+
+# Static schema: attribute name -> PssgAttributeType name.
+ATTRIBUTE_SCHEMA = {
+    "2SidedStencilBackFailOp": "String",
+    "2SidedStencilBackFunc": "String",
+    "2SidedStencilBackMask": "Int",
+    "2SidedStencilBackRef": "Int",
+    "2SidedStencilBackStencilMask": "Int",
+    "2SidedStencilBackZFailOp": "String",
+    "2SidedStencilBackZPassOp": "String",
+    "2SidedStencilFrontFailOp": "String",
+    "2SidedStencilFrontFunc": "String",
+    "2SidedStencilFrontMask": "Int",
+    "2SidedStencilFrontRef": "Int",
+    "2SidedStencilFrontStencilMask": "Int",
+    "2SidedStencilFrontZFailOp": "String",
+    "2SidedStencilFrontZPassOp": "String",
+    "allocateSystem": "Int",
+    "alphaTestEnable": "Int",
+    "alphaTestFunc": "String",
+    "alphaTestRef": "Float",
+    "alphaToCoverageEnable": "Int",
+    "alphaToCoverageLevel": "Int",
+    "atlasname": "String",
+    "automaticBind": "Int",
+    "automipmap": "Int",
+    "blendDest": "String",
+    "blendDestAlpha": "String",
+    "blendEnable": "Int",
+    "blendOp": "String",
+    "blendOpAlpha": "String",
+    "blendSource": "String",
+    "blendSourceAlpha": "String",
+    "borderColor": "Int",
+    "cgStreamDataType": "String",
+    "cgStreamName": "String",
+    "cgStreamRenderType": "String",
+    "codeCount": "Int",
+    "codeEntry": "String",
+    "codeSize": "Int",
+    "codeType": "String",
+    "colorMaskAlpha": "Int",
+    "colorMaskBlue": "Int",
+    "colorMaskGreen": "Int",
+    "colorMaskRed": "Int",
+    "count": "Int",
+    "coupleVertexAndPixelProgram": "Int",
+    "creationDate": "String",
+    "creationMachine": "String",
+    "creator": "String",
+    "cullFaceType": "String",
+    "custom": "String",
+    "data": "String",
+    "dataBlock": "String",
+    "dataType": "String",
+    "defaultRenderSortPriority": "Int",
+    "depth": "Int",
+    "depthMaskEnable": "Int",
+    "depthTestEnable": "Int",
+    "depthTestFunc": "String",
+    "discardLocalAfterBind": "Int",
+    "domainProgram": "String",
+    "dynamicStreamCount": "Int",
+    "elementCount": "Int",
+    "elementCountFromOffset": "Int",
+    "enableCompare": "Int",
+    "enableVertexTexture": "Int",
+    "format": "String",
+    "fragmentProgram": "String",
+    "gammaRemapA": "Int",
+    "gammaRemapB": "Int",
+    "gammaRemapG": "Int",
+    "gammaRemapR": "Int",
+    "height": "Int",
+    "hullProgram": "String",
+    "id": "String",
+    "imageBlockCount": "Int",
+    "indexOffset": "Int",
+    "indices": "String",
+    "indicesCountFromOffset": "Int",
+    "infoPacketSize": "Int",
+    "instancesRequireSorting": "Int",
+    "isRenderTarget": "Int",
+    "joint": "String",
+    "jointCount": "Int",
+    "jointID": "Int",
+    "light": "String",
+    "localData": "Int",
+    "lod": "Float",
+    "lodBias": "Float",
+    "lodCount": "Int",
+    "magFilter": "Int",
+    "matrixCount": "Int",
+    "matrixPalette": "String",
+    "maxAnisotropy": "Float",
+    "maxElementCount": "Int",
+    "maxPacketOutputSize": "Int",
+    "maxTemporaryBufferSize": "Int",
+    "maximumIndex": "Int",
+    "memorySizeForProcess": "Int",
+    "minFilter": "Int",
+    "minimumIndex": "Int",
+    "mipZeroAbsent": "Int",
+    "modifierCount": "Int",
+    "modifierInputCount": "Int",
+    "msaaType": "Int",
+    "name": "String",
+    "network": "String",
+    "nickname": "String",
+    "normalizeEnable": "Int",
+    "numberMipMapLevels": "Int",
+    "numberatlastextures": "Int",
+    "object": "String",
+    "offset": "Int",
+    "packetCount": "Int",
+    "packetListCount": "Int",
+    "packetModifierCount": "Int",
+    "packetModifierInputCount": "Int",
+    "packetSizeCount": "Int",
+    "parameterCount": "Int",
+    "parameterID": "Int",
+    "parameterSavedCount": "Int",
+    "parameterStreamCount": "Int",
+    "passConfigMaskHigh": "Int",
+    "passConfigMaskLow": "Int",
+    "passCount": "Int",
+    "polyFillType": "String",
+    "polyOffsetEnable": "Int",
+    "polyOffsetFactor": "Float",
+    "polyOffsetUnits": "Float",
+    "polySmoothEnable": "Int",
+    "primitive": "String",
+    "prioritizeRead": "Int",
+    "profile": "Int",
+    "profileType": "Int",
+    "renderSortPriority": "Int",
+    "renderType": "String",
+    "renderTypeName": "String",
+    "scale": "Float3",
+    "segmentCount": "Int",
+    "separateAlphaBlendEnable": "Int",
+    "shader": "String",
+    "shaderGroup": "String",
+    "size": "Int",
+    "skeleton": "String",
+    "source": "Int",
+    "sourceCount": "Int",
+    "stateBlockBufferSize": "Int",
+    "stencilMode": "String",
+    "stopTraversal": "Int",
+    "stream": "Int",
+    "streamCount": "Int",
+    "streamOffset": "Int",
+    "stride": "Int",
+    "subStream": "Int",
+    "texelFormat": "String",
+    "texture": "String",
+    "texturename": "String",
+    "totalInputPacketSize": "Int",
+    "transient": "Int",
+    "type": "String",
+    "typename": "String",
+    "u0": "Float",
+    "u1": "Float",
+    "uniqueInputCount": "Int",
+    "up": "Float3",
+    "updateBounds": "Int",
+    "v0": "Float",
+    "v1": "Float",
+    "vertexProgram": "String",
+    "width": "Int",
+    "wrapR": "Int",
+    "wrapS": "Int",
+    "wrapT": "Int",
+}
+
+_ELEMENT_TYPE_NAMES = {
+    "Unknown": ELEMENT_UNKNOWN,
+    "None": ELEMENT_NONE,
+    "Float": ELEMENT_FLOAT,
+    "UInt": ELEMENT_UINT,
+    "Short": ELEMENT_SHORT,
+    "UShort": ELEMENT_USHORT,
+    "Byte": ELEMENT_BYTE,
+    "Int": ELEMENT_INT,
+    "Half": ELEMENT_HALF,
+}
+
+ELEMENT_TYPE_BY_NAME = {
+    name: _ELEMENT_TYPE_NAMES[type_name]
+    for name, type_name in ELEMENT_SCHEMA.items()
+}
+ATTRIBUTE_TYPE_BY_NAME = {
+    name: _ATTR_TO_INT[type_name]
+    for name, type_name in ATTRIBUTE_SCHEMA.items()
+}

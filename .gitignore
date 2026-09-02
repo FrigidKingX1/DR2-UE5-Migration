@@ -1,0 +1,18 @@
+# Extracted game assets (never commit to the repo)
+assets/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Tooling
+build/
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
