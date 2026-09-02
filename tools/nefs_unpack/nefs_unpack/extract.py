@@ -27,7 +27,9 @@ def _safe(name: str) -> str:
 def extract_archive(archive: NefsArchive, out_dir: str) -> None:
     """Recursively extract ``archive`` to ``out_dir``.
 
-    Volumes are read once and cached by index.  AES key is taken from the
+    Uses :meth:`NefsArchive.tree` (the same tree the ``list`` command renders)
+    so directory nesting is consistent with how the archive is displayed.
+    Volumes are read once and cached by index; the AES key comes from the
     archive header.
     """
     os.makedirs(out_dir, exist_ok=True)
@@ -41,64 +43,20 @@ def extract_archive(archive: NefsArchive, out_dir: str) -> None:
             print(f"warning: could not read volume {index}: {e}")
 
     aes_key = archive.aes_key
-
-    # Reconstruct a tree where each directory node maps name->node.
-    node_by_id: dict = {}
-    for item in archive.items.items:
-        if item.is_directory:
-            node_by_id[item.id] = {"item": item, "files": [], "dirs": {}}
-
-    # Attach every file/subdir to its parent directory's node.
-    for parent_item in archive.items.items:
-        if parent_item.is_directory and parent_item.id in node_by_id:
-            node = node_by_id[parent_item.id]
-            for sub_item in archive.items.items:
-                if sub_item.id == parent_item.id:
-                    continue
-                if sub_item.is_directory and sub_item.directory_id == parent_item.id \
-                        and sub_item.id in node_by_id:
-                    node["dirs"][sub_item.id] = node_by_id[sub_item.id]
-                elif not sub_item.is_directory and sub_item.directory_id == parent_item.id:
-                    node["files"].append(sub_item)
-
-    # Determine the top-level node.
-    # The archive root is the self-parented directory (parent == own id), or a
-    # directory with an empty name.  Everything else attaches under it.
-    root_item = None
-    for item in archive.items.items:
-        if item.is_directory and (
-            item.directory_id == item.id or not item.file_name
-        ):
-            root_item = item
-            break
-    if root_item is not None and root_item.id in node_by_id:
-        top = node_by_id[root_item.id]
-    else:
-        # No explicit root directory: build a synthetic one.
-        top = {"files": [], "dirs": {}}
-        for item in archive.items.items:
-            if item.is_directory:
-                parent = archive.items.get(item.directory_id)
-                if parent is None or not parent.is_directory:
-                    top["dirs"][item.id] = node_by_id[item.id]
-            else:
-                parent = archive.items.get(item.directory_id)
-                if parent is None or not parent.is_directory:
-                    top["files"].append(item)
-
-    _walk(archive, top, out_dir, volumes, aes_key)
+    _walk(archive.tree, out_dir, volumes, aes_key)
 
 
-def _walk(archive, node, out_dir, volumes, aes_key):
-    for item in node["files"]:
+def _walk(node, out_dir: str, volumes: dict, aes_key: bytes) -> None:
+    for item in node.files:
         path = os.path.join(out_dir, _safe(item.file_name))
-        data = extract_item(volumes.get(item.volume_index, b""), item, aes_key)
-        if item.volume_index not in volumes:
+        if item.volume_index in volumes:
+            data = extract_item(volumes[item.volume_index], item, aes_key)
+        else:
+            data = b""
             print(f"warning: volume {item.volume_index} not available, empty output for {item.file_name}")
         with open(path, "wb") as f:
             f.write(data)
-    for node_id, sub in node["dirs"].items():
-        item = sub["item"]
-        sub_dir = os.path.join(out_dir, _safe(item.file_name))
+    for node_id, sub in node.children.items():
+        sub_dir = os.path.join(out_dir, _safe(sub.name))
         os.makedirs(sub_dir, exist_ok=True)
-        _walk(archive, sub, sub_dir, volumes, aes_key)
+        _walk(sub, sub_dir, volumes, aes_key)

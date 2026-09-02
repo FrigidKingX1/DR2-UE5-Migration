@@ -1,6 +1,8 @@
 """End-to-end test: run extract_archive on the synthetic .nefs and verify the
 directory tree and file contents land on disk correctly (including nested
-directories and each transform type)."""
+directories and each transform type).  Extraction mirrors ``list``, which uses
+``build_tree``: the single self-parented directory in the fixture is rendered
+as a top-level directory ``a.txt/`` (not flattened)."""
 
 from __future__ import annotations
 
@@ -14,11 +16,12 @@ from nefs_unpack.extract import extract_archive
 
 from _fixture import build_nefs
 
+# relative path -> expected bytes
 EXPECTED = {
-    "a.txt": b"hello, world",
-    "b.bin": b"compressible " * 40,
-    "c.bin": bytes(range(256)) * 2,
-    "nested.txt": b"nested file contents here",
+    os.path.join("a.txt", "a.txt"): b"hello, world",
+    os.path.join("a.txt", "b.bin"): b"compressible " * 40,
+    os.path.join("a.txt", "c.bin"): bytes(range(256)) * 2,
+    os.path.join("sub", "nested.txt"): b"nested file contents here",
 }
 
 
@@ -33,15 +36,11 @@ def test_extract_tree(tmp_path):
     out = os.path.join(tmp_path, "out")
     extract_archive(archive, out)
 
-    # Root files
-    for name in ("a.txt", "b.bin", "c.bin"):
-        with open(os.path.join(out, name), "rb") as f:
-            assert f.read() == EXPECTED[name]
+    for rel, content in EXPECTED.items():
+        with open(os.path.join(out, rel), "rb") as f:
+            assert f.read() == content
 
-    # Nested file under sub/
-    with open(os.path.join(out, "sub", "nested.txt"), "rb") as f:
-        assert f.read() == EXPECTED["nested.txt"]
-
+    assert os.path.isdir(os.path.join(out, "a.txt"))
     assert os.path.isdir(os.path.join(out, "sub"))
 
 
@@ -63,7 +62,6 @@ def test_cli_list_and_unpack(tmp_path, capsys):
     out_dir = os.path.join(tmp_path, "cli_out")
     rc = main(["unpack", path, "--out", out_dir])
     assert rc == 0
-    for name, content in EXPECTED.items():
-        target = os.path.join(out_dir, name) if name != "nested.txt" else os.path.join(out_dir, "sub", name)
-        with open(target, "rb") as f:
+    for rel, content in EXPECTED.items():
+        with open(os.path.join(out_dir, rel), "rb") as f:
             assert f.read() == content
