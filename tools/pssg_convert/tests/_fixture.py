@@ -272,7 +272,7 @@ def build_car() -> PssgFile:
 
     # -------- textures --------
     tex_paint = texture_element("tex_body_paint", "dxt1", 4, 4, b"\x88" * 8)
-    tex_normal = texture_element("tex_body_normal", "dxt5", 2, 2, b"\x77" * 4)
+    tex_normal = texture_element("tex_body_normal", "dxt5", 4, 4, b"\x77" * 16)
     tex_seat = texture_element("tex_seat", "u8", 4, 4, bytes(range(16)))
     tex_wheel = texture_element("tex_wheel", "dxt5", 4, 4, b"\xaa" * 16)
     root.children.extend([tex_paint, tex_normal, tex_seat, tex_wheel])

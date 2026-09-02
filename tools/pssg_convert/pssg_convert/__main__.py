@@ -140,6 +140,8 @@ def _attr_str(el, name, default=""):
     for a in el.attributes:
         if a.name == name:
             v = a.value
+            if isinstance(v, bytes):
+                return v.decode("utf-8", errors="replace").rstrip("\x00")
             return v if isinstance(v, str) else str(v)
     return default
 
@@ -156,6 +158,65 @@ def _tex_of(texel, writes):
     return writes.get(ident)
 
 
+def cmd_gltf(args):
+    import json as _json
+
+    from . import gltf as _gltf
+    from .extract import ObjectIndex, collect_meshes
+    from .tbindings import collect_textures
+
+    pssg = _load(args.file)
+    root = pssg.root
+    index = ObjectIndex(root)
+
+    try:
+        meshes = collect_meshes(root, index)
+    except Exception as exc:
+        sys.exit(f"error extracting meshes: {exc}")
+    if not meshes:
+        sys.exit("no render meshes found in this pssg file")
+
+    # texture container(s): ids -> TEXTURE elements, decode to PNG
+    texture_ids = {}
+    texture_pngs = {}
+    container_paths = list(args.texture_pssg or [])
+    if not container_paths:
+        # default: sibling textures_high container next to the mesh file
+        import glob as _glob
+        here = os.path.dirname(os.path.abspath(args.file))
+        car_dir = os.path.basename(os.path.dirname(here)) or ""
+        for pattern in (
+                os.path.join(here, "..", "textures_high", f"{car_dir}_tex_high*.pssg"),
+                os.path.join(os.path.dirname(here), "textures_high", "*.pssg"),
+        ):
+            container_paths.extend(sorted(_glob.glob(pattern)))
+            if container_paths:
+                break
+    for cpath in container_paths[:1]:
+        tpssg = _load(cpath)
+        tindex = ObjectIndex(tpssg.root)
+        for tid, tex in collect_textures(tpssg.root, tindex).items():
+            texture_ids[tid] = tex
+            png = _gltf.texture_to_png_bytes(tex)
+            if png is not None:
+                texture_pngs[tid] = png
+    print(f"texture container: {len(texture_ids)} textures, "
+          f"{len(texture_pngs)} decodable to PNG")
+
+    material_bindings = _gltf.collect_material_bindings(root, index,
+                                                        texture_ids.keys())
+
+    base_name = os.path.splitext(os.path.basename(args.file))[0] + "_gltf"
+    manifest = _gltf.write_gltf(meshes, material_bindings, texture_pngs,
+                                args.out, base_name, neg_z=args.neg_z)
+    manifest["materialBindings"] = material_bindings
+    with open(os.path.join(args.out, "gltf_manifest.json"), "w",
+              encoding="utf-8") as fh:
+        _json.dump(manifest, fh, indent=2)
+    print(f"glTF: {manifest['meshes']} meshes, {manifest['materials']} "
+          f"materials, {len(manifest['textures'])} textures -> {args.out}")
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="pssg_convert",
                                 description="EGO PSSG mesh + texture extractor")
@@ -168,8 +229,16 @@ def main(argv=None):
     se.add_argument("file")
     se.add_argument("--out", default="pssg_out")
 
+    sg = sub.add_parser("gltf", help="export meshes + materials as glTF 2.0")
+    sg.add_argument("file")
+    sg.add_argument("--out", default="pssg_gltf_out")
+    sg.add_argument("--texture-pssg", action="append",
+                    help="texture container PSSG (repeatable)")
+    sg.add_argument("--neg-z", action="store_true",
+                    help="negate Z and reverse winding (D3D LH -> glTF RH)")
+
     args = p.parse_args(argv)
-    {"info": cmd_info, "extract": cmd_extract}[args.cmd](args)
+    {"info": cmd_info, "extract": cmd_extract, "gltf": cmd_gltf}[args.cmd](args)
 
 
 if __name__ == "__main__":

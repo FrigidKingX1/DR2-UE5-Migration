@@ -88,10 +88,42 @@ and covered by synthetic round-trip tests.
   pssg_convert (14), pssg_unpack (6), jpk_unpack (3), erp_unpack (3),
   dic_unpack (4), ctf_convert (13).
 
-### M3 — Unreal Engine 5 migration (deferred)
-- [ ] Decide physics approach: **Chaos Vehicle** vs **custom C++ solver**
-- [ ] Asset import plugin for UE5
-- [ ] FSH/track/vehicle assembly in-engine
+### M3 — Unreal Engine 5 migration (Phase 0 + A complete)
+- [x] **Phase 0 — target selection & audit** (car `131.nefs`, the FIAT Abarth
+      131 Mirafiori '77): extracted 69 files / 274 MB to `assets/validation/`
+      (gitignored).  Found and fixed three parser bugs that only real car
+      archives trigger:
+  - `pssg_unpack/reader`: attribute values are now read with the *declared
+    size* as authoritative (typed interpretation only when size matches the
+    encoding), mirroring EgoEngineLibrary's Unknown → `ReadBytes(size)`.
+    Real files carry e.g. `source` attributes with size 14 holding
+    length-prefixed strings; the old name-guessed Int read desynced the stream.
+  - `pssg_convert/extract`: the node walk now descends `ROOTNODE` (real car
+    NODE libraries wrap everything in it; without this 0 meshes were found).
+  - `pssg_convert/extract`: `_split_st` built the split UV-set type name as
+    `half4` + `2` = `half42`; also fixed `_unpack_rgba` byte order for
+    big-endian `uchar4` colors.
+- [x] **Phase A — glTF 2.0 exporter** (`pssg_convert gltf`, 9 new tests):
+  - `.gltf` + `.bin` + external PNG textures; POSITION (min/max), NORMAL,
+    `TEXCOORD_0..n` (half2/half4/float2/float4), COLOR_0, ushort/uint indices.
+  - Textures decoded BC1/BC2/BC3/BC7 → PNG via optional `imagecodecs`
+    (graceful skip when absent); **DXT5nmap swizzle** (X in alpha, Y in green)
+    reconstructed to RGB normal maps; sRGB variants share block encodings.
+  - Material binding, two paths: explicit `SHADERINPUT` refs (TextureResolver)
+    with base-name→suffix fallback (`131_glass.tga` → `131_glass_d.tga`), then
+    the car naming convention (`bodywork` → `<car>_main_d.tga` etc.) for
+    exterior shaders that carry no texture inputs (real DR2 cars).
+  - Validated on the real car: exterior **178 meshes / 18 materials / 24
+    textures**, global bbox **1.74 × 2.10 × 4.63 m** (meters, Y-up); interior
+    **45 meshes / 10 materials**.  Livery + normal maps visually verified.
+  - Coordinate pass-through by default; `--neg-z` applies the D3D
+    left-handed → glTF right-handed conversion (negate Z, reverse winding).
+- [ ] Phase B — texture normalization + ML PBR synthesis (Ubisoft CHORD via
+      headless ComfyUI; RTX 2080 SUPER 8 GB → strictly sequential with UE)
+- [ ] Phase C — UE 5.4–5.6 headless ingest (Interchange import + Master
+      Material + Material Instances + Nanite via `UnrealEditor-Cmd.exe`
+      Python commandlets, driven by the export manifest)
+- [ ] Phase D — scene assembly (deferred)
 
 ## Non-goals
 - Redistribution of proprietary assets

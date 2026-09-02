@@ -84,9 +84,9 @@ def test_reader_body(pssg, index):
     assert reader.get_tex_coord(2, 0) == pytest.approx((1.0, 1.0))
 
     assert reader.get_color(0) == pytest.approx((1.0, 0.0, 0.0, 1.0))
-    # uchar4 colors are read back as a big-endian uint and unpacked RGBA per
-    # the reference implementation (channels appear swapped for B/R).
-    assert reader.get_color(1) == pytest.approx((1.0, 0.0, 1.0, 0.0))
+    # uchar4 stores R,G,B,A in memory and the file is big-endian throughout,
+    # so the fixture bytes (0,255,0,255) round-trip as-is.
+    assert reader.get_color(1) == pytest.approx((0.0, 1.0, 0.0, 1.0))
 
     assert list(reader.get_triangles()) == [(0, 1, 2)]
 

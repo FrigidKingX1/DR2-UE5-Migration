@@ -154,10 +154,11 @@ def _unpack_argb(color):
 
 
 def _unpack_rgba(color):
-    return ((color >> 0) & 0xFF) / 255.0, \
-           ((color >> 8) & 0xFF) / 255.0, \
+    # uchar4 stores R,G,B,A in memory; the file is big-endian throughout.
+    return ((color >> 24) & 0xFF) / 255.0, \
            ((color >> 16) & 0xFF) / 255.0, \
-           ((color >> 24) & 0xFF) / 255.0
+           ((color >> 8) & 0xFF) / 255.0, \
+           ((color >> 0) & 0xFF) / 255.0
 
 
 def _index_stride(index_format):
