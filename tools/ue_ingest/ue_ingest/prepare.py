@@ -119,10 +119,11 @@ def prepare(project_dir: str, gltf_dir: str, pbr_dir: str,
     python_dir = os.path.join(project_dir, "Content", "Python")
     os.makedirs(python_dir, exist_ok=True)
 
-    # also stage the ue-side script next to the manifest
-    src = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       "ue_script.py")
-    shutil.copyfile(src, os.path.join(python_dir, "ue_script.py"))
+    # also stage the ue-side scripts next to the manifest
+    src_dir = os.path.dirname(os.path.abspath(__file__))
+    for script_name in ("ue_script.py", "assemble_level.py"):
+        src = os.path.join(src_dir, script_name)
+        shutil.copyfile(src, os.path.join(python_dir, script_name))
 
     out = os.path.join(python_dir, "manifest.json")
     with open(out, "w", encoding="utf-8") as fh:

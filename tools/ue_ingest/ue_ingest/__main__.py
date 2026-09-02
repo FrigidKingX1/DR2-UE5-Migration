@@ -31,6 +31,15 @@ def main(argv=None) -> None:
     pi.add_argument("--log", default=None)
     pi.add_argument("--timeout", type=float, default=3600.0)
 
+    pa = sub.add_parser("assemble", help="assemble the car in a Lumen level")
+    pa.add_argument("--project", required=True)
+    pa.add_argument("--ue-root", required=True,
+                    help="engine root, e.g. G:\\UE5\\UE_5.5")
+    pa.add_argument("--script", default=None,
+                    help="python script (default: <project>/Content/Python/assemble_level.py)")
+    pa.add_argument("--log", default=None)
+    pa.add_argument("--timeout", type=float, default=3600.0)
+
     args = p.parse_args(argv)
 
     if args.cmd == "prepare":
@@ -44,8 +53,10 @@ def main(argv=None) -> None:
     from ue_ingest import run_import
 
     project_dir = os.path.dirname(os.path.abspath(args.project))
+    default_script = {"assemble": "assemble_level.py",
+                      "import": "ue_script.py"}[args.cmd]
     script = args.script or os.path.join(project_dir, "Content", "Python",
-                                         "ue_script.py")
+                                         default_script)
     rc = run_import(args.ue_root, args.project, script,
                     log_path=args.log, timeout=args.timeout)
     print(f"editor exit code: {rc}")

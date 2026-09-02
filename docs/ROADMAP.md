@@ -163,7 +163,24 @@ and covered by synthetic round-trip tests.
   - **Validated result: 178 StaticMeshes + 24 textures + M_CarPBR + 8
     shader→MI bindings (78 material slots assigned) + Nanite 178/178,
     0 errors** (`import_result.json` written next to the manifest).
-- [ ] Phase D — scene assembly (spawn car in level, Lumen lighting rig)
+- [x] **Phase D — level assembly** (`assemble_level.py`, staged by `prepare`,
+      run via `ue_ingest assemble`):
+  - Creates/saves level `L_CarShowroom`; spawns a grid ground plane; spawns
+    every primary imported StaticMesh at the origin — the glTF exporter
+    flattened vertices without node transforms, so origin placement
+    reassembles the car (hash-suffixed Interchange duplicates skipped).
+  - Lumen rig: movable DirectionalLight (atmosphere sun), SkyAtmosphere,
+    VolumetricCloud, real-time-capture SkyLight, ExponentialHeightFog,
+    unbounded PostProcessVolume; Lumen GI + reflections + VSM enabled in
+    `DefaultEngine.ini`.
+  - UE commandlet finding: `EditorActorSubsystem.spawn_actor_from_object`
+    access-violates inside `-run=pythonscript` (5.5.4); the safe pattern is
+    `spawn_actor_from_class(StaticMeshActor)` + `set_static_mesh` on the
+    component.  `set_actor_rotation` requires the `teleport_physics` arg.
+  - **Validated: 105 car actors + ground + 6-piece lighting rig, level saved,
+    0 errors** (`assemble_result.json`).
+- [ ] Human-led remainder: visual/material polish, Chaos vehicle physics from
+      the extracted `131.ctf`, terrain/Landscape rebuild, MetaSounds.
 
 ## Non-goals
 - Redistribution of proprietary assets
