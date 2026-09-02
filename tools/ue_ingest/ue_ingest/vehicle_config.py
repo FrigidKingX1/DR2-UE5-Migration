@@ -65,42 +65,43 @@ TUNING = {
 
 # Torque curve (normalized 0..1) vs RPM for the 2.0 L Group 4 engine:
 # broad flat band peaking at 4500 RPM, tapering to the 7000 RPM limiter.
-TORQUE_CURVE_TEXT = (
-    "(EditorCurveData=(Keys=("
-    "(InterpMode=0,Time=0.000000,Value=0.45),"
-    "(InterpMode=0,Time=1000.000000,Value=0.55),"
-    "(InterpMode=0,Time=2000.000000,Value=0.70),"
-    "(InterpMode=0,Time=3000.000000,Value=0.82),"
-    "(InterpMode=0,Time=4000.000000,Value=0.92),"
-    "(InterpMode=0,Time=4500.000000,Value=1.00),"
-    "(InterpMode=0,Time=5500.000000,Value=0.97),"
-    "(InterpMode=0,Time=6000.000000,Value=0.92),"
-    "(InterpMode=0,Time=6500.000000,Value=0.85),"
-    "(InterpMode=0,Time=7000.000000,Value=0.75))))")
-
-# Max steer angle (deg) vs forward speed (MPH): full lock for hairpins at
-# crawl speed, tightening at pace - typical rally steering response.
-STEERING_CURVE_TEXT = (
-    "(EditorCurveData=(Keys=("
-    "(InterpMode=0,Time=0.000000,Value=35.0),"
-    "(InterpMode=0,Time=10.000000,Value=30.0),"
-    "(InterpMode=0,Time=25.000000,Value=20.0),"
-    "(InterpMode=0,Time=50.000000,Value=12.0),"
-    "(InterpMode=0,Time=80.000000,Value=8.0),"
-    "(InterpMode=0,Time=120.000000,Value=6.0))))")
+# Steering curve: max steer angle (deg) vs forward speed (MPH) - full
+# lock for hairpins at crawl speed, tightening at pace (rally response).
+TORQUE_CURVE_KEYS = [
+    (0.0, 0.45), (1000.0, 0.55), (2000.0, 0.70), (3000.0, 0.82),
+    (4000.0, 0.92), (4500.0, 1.00), (5500.0, 0.97), (6000.0, 0.92),
+    (6500.0, 0.85), (7000.0, 0.75),
+]
+STEERING_CURVE_KEYS = [
+    (0.0, 35.0), (10.0, 30.0), (25.0, 20.0),
+    (50.0, 12.0), (80.0, 8.0), (120.0, 6.0),
+]
 
 
-def _apply_curve_text(owner, prop_name: str, text: str) -> None:
-    """Author curve keys on a FRuntimeFloatCurve property headlessly.
+def _keys_text(keys) -> str:
+    return ",".join(
+        f"(InterpMode=0,Time={t:.6f},Value={v:.6f})" for t, v in keys)
 
-    FRuntimeFloatCurve.import_text goes through native property text
-    import, so it does NOT need FRichCurve to be Python-reflected - this
-    closes what was previously documented as impossible headlessly.
-    The edited wrapper must be set back on its owner struct afterward.
+
+def _apply_struct_text(owner, prop_name: str, text: str) -> None:
+    """Author struct fields + curve keys on a USTRUCT property so that
+    they PERSIST to disk.
+
+    In-memory import_text on an extracted FRuntimeFloatCurve wrapper is
+    NOT enough: the keys read back fine in-process but are lost on save.
+    The persistent route is modify() + FStructProperty::ImportText on the
+    WHOLE owner struct (routes through PostEditChangeProperty tagging),
+    then setting the struct back.  Verified by fresh-process reload.
     """
-    curve = owner.get_editor_property(prop_name)
-    curve.import_text(text)
-    owner.set_editor_property(prop_name, curve)
+    owner.modify()
+    struct = owner.get_editor_property(prop_name)
+    struct.import_text(text)
+    owner.set_editor_property(prop_name, struct)
+    if hasattr(owner, "post_edit_change_property"):
+        try:
+            owner.post_edit_change_property()
+        except Exception:
+            pass
 
 
 def log(msg: str) -> None:
@@ -270,9 +271,19 @@ def tune_chaos_movement() -> None:
 
         eng = mv.get_editor_property("engine_setup")
         steps["engine"] = _set_struct_fields(eng, TUNING["engine"])
-        _apply_curve_text(eng, "torque_curve", TORQUE_CURVE_TEXT)
-        steps["engine"].append("torque_curve(10 keys)")
-        mv.set_editor_property("engine_setup", eng)
+        t = TUNING["engine"]
+        _apply_struct_text(mv, "engine_setup",
+            "(MaxTorque=%f,MaxRPM=%f,EngineIdleRPM=%f,"
+            "EngineBrakeEffect=%f,EngineRevUpMOI=%f,EngineRevDownRate=%f,"
+            "TorqueCurve=(EditorCurveData=(Keys=(%s))))" % (
+                t["max_torque"], t["max_rpm"], t["engine_idle_rpm"],
+                t["engine_brake_effect"], t["engine_rev_up_moi"],
+                t["engine_rev_down_rate"],
+                _keys_text(TORQUE_CURVE_KEYS)))
+        steps["engine"].append(
+            f"torque_curve({len(TORQUE_CURVE_KEYS)} keys, persisted)")
+        mv.set_editor_property("engine_setup",
+                               mv.get_editor_property("engine_setup"))
 
         tr = mv.get_editor_property("transmission_setup")
         steps["transmission"] = _set_struct_fields(tr, {
@@ -303,14 +314,23 @@ def tune_chaos_movement() -> None:
         mv.set_editor_property("differential_setup", dif)
 
         st = mv.get_editor_property("steering_setup")
-        val, name = _find_enum_value(unreal.SteeringType, ["AngleRatio"])
+        steps["steering"] = "enum-not-found"
+        val, name = _find_enum_value(unreal.SteeringType, ["angle"])
         if val is not None:
             st.set_editor_property("steering_type", val)
             steps["steering"] = name
+        else:
+            RESULT["errors"]["steering_enum"] = (
+                "members: " + str([
+                    n for n in dir(unreal.SteeringType)
+                    if not n.startswith("_")]))
         st.set_editor_property("angle_ratio",
                                TUNING["steering"]["angle_ratio"])
-        _apply_curve_text(st, "steering_curve", STEERING_CURVE_TEXT)
-        mv.set_editor_property("steering_setup", st)
+        _apply_struct_text(mv, "steering_setup",
+            "(AngleRatio=%f,SteeringCurve=(EditorCurveData=(Keys=(%s))))"
+            % (TUNING["steering"]["angle_ratio"],
+               _keys_text(STEERING_CURVE_KEYS)))
+        steps["steering"] += f" +curve({len(STEERING_CURVE_KEYS)} keys)"
 
         # 4 wheel setups bound to BP_Wheel131
         wheel_bp = al.load_asset(f"{DEST}/BP_Wheel131")

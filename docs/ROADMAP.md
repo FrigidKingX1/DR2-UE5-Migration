@@ -237,12 +237,17 @@ and covered by synthetic round-trip tests.
     mass 1000 kg, 7000 RPM / 190 Nm engine, 5-speed auto RWD
     transmission, 4 wheel setups bound to the new **`BP_Wheel131`**
     (0.31 m radius, tuned suspension/friction), round-trip verified.
-    **Curve keys ARE authorable headlessly** after all:
-    `FRuntimeFloatCurve.import_text` goes through native property text
-    import and needs no FRichCurve reflection - the torque curve
-    (10 keys, peak 1.0 @ 4500 RPM) and steering curve (6 keys, 35 deg
-    at standstill down to 6 deg @ 120 MPH) are authored on the vehicle
-    and round-trip verified.  Provenance: the encrypted CTF cannot be
+    **Curve keys ARE authorable and persistent headlessly** after all:
+    `FRuntimeFloatCurve.import_text` needs no FRichCurve reflection, but
+    an in-memory curve-wrapper edit is lost on save - the persistent
+    route is `modify()` + **whole-struct** `import_text` on
+    `engine_setup`/`steering_setup` (routes through
+    `FStructProperty::ImportText` + PostEditChangeProperty tagging).
+    The torque curve (10 keys, peak 1.0 @ 4500 RPM) and steering curve
+    (6 keys, 35 deg at standstill down to 6 deg @ 120 MPH) are authored
+    on the vehicle and verified by fresh-process reload of the saved BP.
+    Landmine: enum members are ALL-CAPS with underscores
+    (`ANGLE_RATIO`), so substring matching on the C++ casing fails.  Provenance: the encrypted CTF cannot be
     decoded and ai_vehicle_statistics has no engine/gear/mass data, so
     values are real-world Fiat 131 Abarth Group 4 specs (documented
     approximation).
