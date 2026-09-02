@@ -40,6 +40,16 @@ and covered by synthetic round-trip tests.
     secondary offsets; part-6 flags/volumes confirmed sane
     (all `Volume==0`, flags within `0x1F`).
   - Spot-extraction from `game.dat` gives byte-exact size matches.
+  - **Full `game.dat` unpack validated** (DR2 `unpack`): 406 entries → 390 files
+    across 16 directories, **0/390 size mismatches**, 0 missing.  The `.xml`
+    contents split cleanly by magic: 3 plain XML (all well-formed), 18 BinXml
+    (`1A 22 52 72`), 7 BXML (`\x01BXML`) — both binary forms decode to readable
+    text via `database_convert`.  `.pssg` magic/size correct; `.tmep`/`.tpk`
+    blobs non-trivial and structurally consistent.
+  - Fix found during validation: `extract_archive` used its own tree builder and
+    flattened everything onto the first self-parented dir, dropping 387/390
+    DR2 files.  Rewritten to walk `NefsArchive.tree` (same tree as `list`),
+    consistent for v1.6.0 + v2.0.0.
   - Every DR2 archive is NeFS v2.0.0; there are **no** `.erp` `.database`
     files in DR2 (older-EGO formats — N/A here).
 
