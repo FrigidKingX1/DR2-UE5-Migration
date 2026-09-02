@@ -209,10 +209,44 @@ and covered by synthetic round-trip tests.
     overrides) standing on real imported Australian rally terrain with the
     Lumen lighting rig; /Game/Import also holds 100 SoundWaves,
     MS_Engine131, 8 surface PhysicalMaterials and BP_Vehicle131.
-- [ ] Residual (needs engine source or interactive editor, documented):
-      ChaosWheeledVehicleMovementComponent wheel/engine struct tuning,
-      MetaSound node graph authoring, CurveFloat keys, WEM->Vorbis quality
-      verification by ear.
+- [x] Phase F - autonomous finalization (MetaSound, Chaos tuning, audio
+      curation, integration):
+  - **F1 MetaSound authoring (COMPLETE)**: `MS_Engine131` is a fully
+    authored MetaSoundSource - one looping Wave Player (UE/Wave Player/
+    Stereo) bound to the longest engine-candidate SoundWave, wired
+    `UE.Source.OnPlay -> Play` and stereo `Out Left/Right -> Output`.
+    Key headless landmines solved: `find_or_begin_building` returns a
+    `(builder, result)` tuple; `build_to_asset` opens a Slate overwrite
+    dialog (-> crash) if the target name exists; `rename_asset`/
+    `delete_asset` on built MetaSounds access-violate in UnrealEd.  Fix:
+    seed the builder from a throwaway `MS_Seed` skeleton and
+    `build_to_asset` directly into the free `MS_Engine131` name (no
+    rename/delete of built assets).
+  - **F2 Audio analysis (COMPLETE)**: new `tools/audio_analyze` - numpy
+    STFT feature extraction (duration/RMS/spectral centroid/flatness/
+    envelope CV), engine-vs-effect classification (12 engine loops found
+    in the s_mech bank), PIL spectrogram contact sheet, and a curated
+    `Listen_Here` folder with the top 6 engine candidates for by-ear
+    confirmation (the one thing that cannot be automated).
+  - **F3 Chaos movement tuning (COMPLETE, scalar API)**: the earlier
+    "not Python-settable" assessment was too pessimistic - all
+    `FVehicleEngineConfig`/`FVehicleTransmissionConfig`/
+    `FVehicleDifferentialConfig`/`FVehicleSteeringConfig`/
+    `FChaosWheelSetup` fields are reflected and settable on the
+    movement component CDO.  `BP_Vehicle131` is now tuned end-to-end:
+    mass 1000 kg, 7000 RPM / 190 Nm engine, 5-speed auto RWD
+    transmission, 4 wheel setups bound to the new **`BP_Wheel131`**
+    (0.31 m radius, tuned suspension/friction), round-trip verified.
+    Provenance: the encrypted CTF cannot be decoded and
+    ai_vehicle_statistics has no engine/gear/mass data, so values are
+    real-world Fiat 131 Abarth Group 4 specs (documented approximation).
+  - **F4 Integration (COMPLETE)**: `assemble_level.py` spawns the tuned
+    `BP_Vehicle131` into `L_CarShowroom` alongside the 105 mesh actors
+    (raised Z so wheels rest on the ground plane).
+- [ ] Residual (needs interactive editor or audio perception, documented):
+      TorqueCurve/SteeringCurve keys (unreflected FRuntimeFloatCurve),
+      CurveFloat assets (commandlet AV), listening to the curated
+      `Listen_Here` engine loops to pick the final crossfade pair.
 
 ## Non-goals
 - Redistribution of proprietary assets

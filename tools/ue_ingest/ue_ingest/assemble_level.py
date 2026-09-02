@@ -136,6 +136,26 @@ def spawn_car(meshes) -> list:
     return spawned
 
 
+def spawn_vehicle() -> object:
+    """Spawn the tuned BP_Vehicle131 above the ground.
+
+    Spawns from the generated class (from_object access-violates headlessly
+    on 5.5.4, same as spawn_car).  Raised on Z so the wheels rest on the
+    ground plane rather than clipping through it.
+    """
+    bp = unreal.EditorAssetLibrary.load_asset(
+        "/Game/Import/Vehicle/BP_Vehicle131")
+    if bp is None:
+        raise RuntimeError("BP_Vehicle131 not found")
+    actor = _actor_subsystem().spawn_actor_from_class(
+        bp.generated_class(), unreal.Vector(0.0, 0.0, 120.0))
+    if actor is None:
+        raise RuntimeError("vehicle spawn returned None")
+    actor.set_actor_label("BP_Vehicle131")
+    step_ok("vehicle_spawn", actor.get_actor_label())
+    return actor
+
+
 def spawn_lighting_rig() -> dict:
     rig = {}
     sun = _spawn(unreal.DirectionalLight, unreal.Vector(0, 0, 500),
@@ -250,6 +270,12 @@ def main() -> None:
         RESULT["actors"]["car"] = len(actors)
     except Exception as exc:
         fail("car", exc)
+
+    try:
+        spawn_vehicle()
+        RESULT["actors"]["vehicle"] = 1
+    except Exception as exc:
+        fail("vehicle_spawn", exc)
 
     try:
         spawn_lighting_rig()
