@@ -143,10 +143,27 @@ and covered by synthetic round-trip tests.
     atlas (smooth clear-coat vs rough mechanical parts).  Known limitation:
     CHORD reads rusty/dirty albedo as dielectric, so brake discs come out
     non-metallic — override metallic per-material in the UE Master Material.
-- [ ] Phase C — UE 5.4–5.6 headless ingest (Interchange import + Master
-      Material + Material Instances + Nanite via `UnrealEditor-Cmd.exe`
-      Python commandlets, driven by the export manifest)
-- [ ] Phase D — scene assembly (deferred)
+- [x] **Phase C — UE 5.5 headless ingest** (`tools/ue_ingest`, validated
+      against a real `G:\UE5\UE_5.5` install):
+  - `prepare` merges the Phase A glTF manifest + Phase B PBR pack into an
+    ingest manifest (shader→part→`T_<Car>_<Part>_*` texture mapping); `import`
+    drives `UnrealEditor-Cmd.exe -run=pythonscript -unattended` on a generated
+    blank project (`E:\ClaudeATHome\Projects\UE\CarImport`, outside the repo).
+  - UE-side `ue_script.py`: Interchange glTF import via `AssetImportTask`,
+    texture imports with per-kind settings (sRGB basecolor, `TC_NORMALMAP`,
+    `TC_MASKS` ORM, `TC_GRAYSCALE` height), Master Material `M_CarPBR`
+    (BaseColor/Normal/ORM params → BaseColor, Normal, R→AO, G→Roughness,
+    B→Metallic) built with `MaterialEditingLibrary`, per-part
+    `MaterialInstanceConstant`s, slot assignment by glTF material name,
+    Nanite verification.
+  - UE 5.5 Python API notes baked in: `MaterialEditingLibrary.create_material_asset`
+    is gone (use `MaterialFactoryNew`), Python enums are ALL-CAPS
+    (`TEXTUREGROUP_WORLD`), `NaniteSettings` has no Python-writable fields
+    (Nanite is project-default-on; verified `bEnabled=True` on import).
+  - **Validated result: 178 StaticMeshes + 24 textures + M_CarPBR + 8
+    shader→MI bindings (78 material slots assigned) + Nanite 178/178,
+    0 errors** (`import_result.json` written next to the manifest).
+- [ ] Phase D — scene assembly (spawn car in level, Lumen lighting rig)
 
 ## Non-goals
 - Redistribution of proprietary assets
