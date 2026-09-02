@@ -137,6 +137,62 @@ def package_name(car_prefix: str, part: str, suffix: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# detail restoration
+
+
+def restore_detail(chord_base: np.ndarray, legacy_base: np.ndarray,
+                   strength: float = 0.5) -> np.ndarray:
+    """Re-inject legacy high-frequency detail into CHORD's de-lit basecolor.
+
+    CHORD de-lits the albedo but diffusion softens decal edges and text (the
+    livery number/sponsor text comes back blurry).  The legacy ``_d`` map
+    keeps crisp high frequencies but carries baked lighting.  Combine both:
+    keep CHORD's low-frequency (de-lit) content and overlay the legacy map's
+    high-frequency residual (legacy - gaussian(legacy)), scaled by strength.
+
+    strength 0 -> pure CHORD basecolor, 1 -> adds the full legacy detail
+    residual.  Both inputs are HxWx3 uint8; the legacy map is resampled by
+    simple nearest indexing if sizes differ.
+    """
+    if chord_base.shape[:2] != legacy_base.shape[:2]:
+        legacy_base = _nearest_resize(legacy_base, chord_base.shape[:2])
+    c = _as_float(chord_base)[..., :3]
+    l = _as_float(legacy_base)[..., :3]
+
+    low = _box_blur(l, radius=2)
+    detail = l - low
+    out = np.clip(c + detail * strength, 0.0, 1.0)
+    return (out * 255.0 + 0.5).astype(np.uint8)
+
+
+def _nearest_resize(arr: np.ndarray, shape: tuple) -> np.ndarray:
+    yi = np.linspace(0, arr.shape[0] - 1, shape[0]).astype(int)
+    xi = np.linspace(0, arr.shape[1] - 1, shape[1]).astype(int)
+    return arr[np.ix_(yi, xi)]
+
+
+def _box_blur(arr: np.ndarray, radius: int = 2) -> np.ndarray:
+    """Separable box blur via cumulative sums, O(n) per axis, edge-clamped."""
+    w = 2 * radius + 1
+
+    def _blur_axis(x, axis):
+        x = np.pad(x, [(radius, radius) if ax == axis else (0, 0)
+                       for ax in range(x.ndim)], mode="edge")
+        c = np.cumsum(x, axis=axis, dtype=np.float32)
+        zeros_shape = list(c.shape)
+        zeros_shape[axis] = 1
+        c = np.concatenate([np.zeros(zeros_shape, dtype=np.float32), c],
+                           axis=axis)
+        lo = [slice(None)] * c.ndim
+        hi = [slice(None)] * c.ndim
+        lo[axis] = slice(w, None)
+        hi[axis] = slice(None, -w)
+        return (c[tuple(lo)] - c[tuple(hi)]) / np.float32(w)
+
+    return _blur_axis(_blur_axis(arr.astype(np.float32), 0), 1)
+
+
+# ---------------------------------------------------------------------------
 # helpers
 
 

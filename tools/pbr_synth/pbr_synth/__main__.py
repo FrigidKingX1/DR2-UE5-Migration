@@ -1,4 +1,4 @@
-"""pbr_synth CLI — neural PBR synthesis + UE5 packaging.
+﻿"""pbr_synth CLI â€” neural PBR synthesis + UE5 packaging.
 
 Subcommands:
   pack    Offline pass (no GPU): package legacy maps into the Phase C
@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 
 import numpy as np
@@ -219,6 +220,45 @@ def _package_part(args, comfy_dir: str, car: str, part: str,
     print(f"[{part}] packaged: {', '.join(written)}")
 
 
+def cmd_polish(args) -> None:
+    """Re-inject legacy high-frequency detail into the CHORD basecolor pack.
+
+    CHORD de-lits the albedo but diffusion softens decal edges and text.  The
+    legacy ``_d`` keeps crisp high frequencies but carries baked lighting.
+    This pass keeps CHORD's low-frequency (de-lit) content and overlays the
+    legacy map's high-frequency residual, rewriting ``T_<Car>_<Part>_D.png``
+    in place (backed up as ``*_D.chord.png`` on first run).
+    """
+    if imagecodecs is None:
+        sys.exit("imagecodecs is required for polish (pip install imagecodecs)")
+    legacy_sets = discover_parts(args.legacy_dir)
+    os.makedirs(args.out, exist_ok=True)
+    polished = 0
+    for part, files in sorted(legacy_sets.items()):
+        if "_d" not in files:
+            continue
+        car = args.car or car_prefix_from(args.legacy_dir)
+        packaged = os.path.join(args.out,
+                                reconcile.package_name(car, part, "D"))
+        if not os.path.isfile(packaged):
+            print(f"  skip {part}: no packaged basecolor {packaged}")
+            continue
+        chord = _decode(packaged)
+        legacy = _decode(files["_d"])
+        if chord is None or legacy is None:
+            print(f"  skip {part}: decode failed")
+            continue
+        backup = packaged.replace(".png", ".chord.png")
+        if not os.path.isfile(backup):
+            shutil.copyfile(packaged, backup)
+        detail = reconcile.restore_detail(chord, legacy,
+                                          strength=args.strength)
+        _write(args.out, reconcile.package_name(car, part, "D"), detail)
+        polished += 1
+        print(f"  {part}: detail restored (strength={args.strength})")
+    print(f"polished {polished} basecolor maps -> {args.out}")
+
+
 def cmd_free(args) -> None:
     service = ComfyService(args.comfy_dir, port=args.port)
     if service.is_running():
@@ -253,13 +293,22 @@ def main(argv=None) -> None:
     ps.add_argument("--timeout", type=float, default=900.0,
                     help="per-part workflow timeout in seconds")
 
+    po = sub.add_parser("polish", parents=[common],
+                        help="restore legacy detail onto CHORD basecolors")
+    po.add_argument("legacy_dir",
+                    help="folder with legacy <car>_<part>_d.png maps")
+    po.add_argument("--strength", type=float, default=0.5,
+                    help="detail blend strength 0..1 (default 0.5)")
+
     pf = sub.add_parser("free", help="free VRAM of a running ComfyUI")
     pf.add_argument("--comfy-dir", default=DEFAULT_COMFY_DIR)
     pf.add_argument("--port", type=int, default=8188)
 
     args = p.parse_args(argv)
-    {"pack": cmd_pack, "synth": cmd_synth, "free": cmd_free}[args.cmd](args)
+    {"pack": cmd_pack, "synth": cmd_synth, "polish": cmd_polish,
+     "free": cmd_free}[args.cmd](args)
 
 
 if __name__ == "__main__":
     main()
+

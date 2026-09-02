@@ -128,8 +128,24 @@ def main(argv=None):
     fj.add_argument("--schema", required=True)
     fj.add_argument("--out", required=True)
 
+    ac = sub.add_parser(
+        "ai-to-config",
+        help="build vehicle_config.json from decoded AI statistics XMLs")
+    ac.add_argument("--stats", required=True,
+                    help="ai_vehicle_statistics.xml (decoded to text)")
+    ac.add_argument("--cornering", required=True,
+                    help="ai_vehicle_cornering_statistics.xml (decoded)")
+    ac.add_argument("--out", required=True)
+    ac.add_argument("--car", default=None)
+
     args = p.parse_args(argv)
     try:
+        if args.cmd == "ai-to-config":
+            from .aistats import write_config
+            out = write_config(args.stats, args.cornering, args.out,
+                               car=args.car)
+            print(f"vehicle config -> {out}")
+            return
         {"info": cmd_info, "to-csv": cmd_to_csv, "from-csv": cmd_from_csv,
          "to-json": cmd_to_json, "from-json": cmd_from_json}[args.cmd](args)
     except (CtfFormatError, SchemaError) as exc:
