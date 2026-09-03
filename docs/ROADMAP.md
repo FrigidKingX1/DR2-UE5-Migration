@@ -276,6 +276,31 @@ and covered by synthetic round-trip tests.
       guaranteed fallback), and adds a positional `EngineLoop131`
       AmbientSound playing MS_Engine131.  Drive with the template bindings
       (WASD + gamepad).
+  - **PIE fix chain (root causes found via `-game` log replay)**: the
+    "nothing works on Play" failure was three stacked bugs, all proven by
+    running the project in game mode headlessly (`-game -RenderOffScreen`
+    + log grep - reproduces GameMode spawn/possession without an editor):
+    (1) the stale `BP_Vehicle131` shell from the F4 assemble pass sat at
+    the origin WITH collision and physically blocked the GameMode pawn
+    spawn ("SpawnActor failed because of collision") -> no pawn -> no
+    possession -> the template controller's per-tick "Accessed None:
+    Vehicle Movement Component" spam; (2) the terrain heightfield is a
+    VERTICAL WALL filling the +X/-Y quadrant (bounds X 0..299m, Y
+    -286..0m, Z up to 560m) - any spawn with Y<=~75cm overlaps its edge
+    face, so the PlayerStart now rests at (600, 300, 150), outside the
+    terrain footprint and the display meshes; (3) the offroad materials
+    parent into SportsCar assets, so the SportsCar pack must be copied
+    too (and it MUST be the 5.5-layout pack - 5.8 renamed those assets).
+    Final headless `-game` run: zero errors, world up for play.
+- [x] Engine 5.8 migration (September 2026): project switched to UE 5.8.2
+      (`G:\UE5\UE_5.8\UE_5.8`); assets auto-upgraded on first load, all
+      scripted passes re-ran clean. 5.8 notes: `TraceTypeQuery` members
+      renamed (`ECC_VISIBILITY`), `DrawDebugType` -> `DrawDebugTrace`,
+      `get_actor_bounds` returns a 2-tuple, `collision_enabled` UPROPERTY
+      gone (use `get_collision_enabled()`), ToolsetRegistry init script
+      errors on `unreal.PythonTestRunner` (engine-side, harmless).  The
+      official **Model Context Protocol** plugin + ToolsetRegistry are
+      enabled in the project for editor-integrated agent workflows.
   - **Mount-path fix**: the vehicle FeaturePack must live at
     `/Game/Vehicles/...` (`SharedContentPacks MountName="Vehicles"` in the
     template's TemplateDefs.ini; every internal ref points there).  The

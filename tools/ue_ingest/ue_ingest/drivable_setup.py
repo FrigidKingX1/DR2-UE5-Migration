@@ -163,21 +163,44 @@ def spawn_engine_ambient() -> None:
 def setup_level() -> None:
     les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     les.load_level(LEVEL_PATH)
-
-    # PlayerStart above the ground plane (dedupe: one per run accumulates)
     actor_sub = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     world = unreal.EditorLevelLibrary.get_editor_world()
+
+    # remove the stale BP_Vehicle131 shell (spawned by the F4 assemble pass):
+    # it sits at the origin WITH collision and BLOCKS the GameMode spawn of
+    # the drivable pawn (SpawnActor failed because of collision at 0,0,150
+    # -> no pawn -> Accessed None spam in the template controller).
+    removed = 0
+    for a in unreal.GameplayStatics.get_all_actors_of_class(
+            world, unreal.Actor):
+        try:
+            if a.get_class().get_name() == "BP_Vehicle131_C":
+                actor_sub.destroy_actor(a)
+                removed += 1
+        except Exception:
+            pass
+    if removed:
+        log(f"removed {removed} stale BP_Vehicle131 shell actor(s)")
+        RESULT["steps"]["stale_shell_removed"] = removed
+
+    # PlayerStart dedupe: one per run accumulates otherwise
     for old in unreal.GameplayStatics.get_all_actors_of_class(
             world, unreal.PlayerStart):
         try:
             actor_sub.destroy_actor(old)
         except Exception:
             pass
+    # Spawn spot geometry (measured via bounds in the 5.8 probe):
+    # - Terrain_AustraliaRally01 spans X 0..29900, Y -28600..0, Z 0..56005:
+    #   it is a VERTICAL WALL filling the +X/-Y quadrant (spawn shapes with
+    #   Y<=~75cm overlap its edge face -> "SpawnActor failed collision").
+    # - 105 display meshes sit around the origin (roughly X +-230, Y +-110).
+    # Spawn at (600, 300): outside both footprints, over the ground plane.
     ps = actor_sub.spawn_actor_from_class(
-        unreal.PlayerStart, unreal.Vector(0.0, 0.0, 150.0))
+        unreal.PlayerStart, unreal.Vector(600.0, 300.0, 150.0))
     if ps is not None:
         ps.set_actor_label("PlayerStart131")
-        RESULT["steps"]["player_start"] = "spawned"
+        RESULT["steps"]["player_start"] = "spawned (clear of terrain wall)"
     else:
         RESULT["errors"]["player_start"] = "spawn failed"
 
