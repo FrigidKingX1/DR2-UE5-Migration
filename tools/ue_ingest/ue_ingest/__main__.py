@@ -180,14 +180,16 @@ def main(argv=None) -> None:
         src_tpl = os.path.join(template_root, "TP_VehicleAdvBP", "Content",
                                "VehicleTemplate")
         if not os.path.isdir(os.path.join(content_root, "Vehicles",
-                                           "OffroadCar")):
+                                           "OffroadCar", "Materials")):
             # the FeaturePack's internal refs expect /Game/Vehicles/...
             # (SharedContentPacks MountName="Vehicles" in TemplateDefs.ini)
             os.makedirs(os.path.join(content_root, "Vehicles"),
                         exist_ok=True)
-            shutil.copytree(os.path.join(src_veh, "OffroadCar"),
-                            os.path.join(content_root, "Vehicles",
-                                         "OffroadCar"))
+            veh_dst = os.path.join(content_root, "Vehicles", "OffroadCar")
+            if os.path.isdir(veh_dst):
+                # stale partial copy from the nesting bug - rebuild clean
+                shutil.rmtree(veh_dst)
+            shutil.copytree(os.path.join(src_veh, "OffroadCar"), veh_dst)
             shutil.copytree(os.path.join(src_veh, "PhysicsMaterials"),
                             os.path.join(content_root, "Vehicles",
                                          "PhysicsMaterials"))
