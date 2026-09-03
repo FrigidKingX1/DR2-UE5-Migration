@@ -12,6 +12,13 @@ Runs inside ``UnrealEditor-Cmd.exe -run=pythonscript`` after the import pass
    SkyLight, ExponentialHeightFog and an unbounded PostProcessVolume;
 5. save the level and write assemble_result.json next to the manifest.
 
+The pass is idempotent: it first deletes its own previously-spawned actors
+(display meshes under MESH_DIR + ground + lighting rig), so re-runs never
+stack duplicate layers.  NOTE the showroom does NOT spawn a vehicle here -
+the drivable car comes from the GameMode/PlayerStart setup in
+``ue_ingest drivable`` (an obsolete BP_Vehicle131 shell at the origin once
+broke PIE pawn spawn by its collision).
+
 Every step is defensive (feature-detected across 5.4-5.6 APIs) and reports
 into assemble_result.json for headless verification.
 """
@@ -34,6 +41,15 @@ GROUND_PATH = "/Game/Import/Fiat131/L_CarShowroom_Ground"
 
 _DUP_SUFFIX = re.compile(r"_[0-9a-f]{32}$")
 
+# Actors this pass owns (mesh/rig/ground/vehicle) get deleted before a
+# re-run so the pass is idempotent and never stacks duplicate layers.
+_RIG_LABELS = {"Ground", "Sun", "SkyAtmosphere", "VolumetricCloud",
+               "SkyLight", "HeightFog", "PostProcess"}
+# NOTE: the showroom level no longer spawns the obsolete BP_Vehicle131 shell.
+# The drivable car is provided by the GameMode/PlayerStart setup from
+# `ue_ingest drivable` (BP_Vehicle131_Drivable); spawning the old shell here
+# re-introduced a collision-blocker at the origin that broke PIE spawn.
+
 
 def log(msg: str) -> None:
     unreal.log_warning(f"[assemble] {msg}")
@@ -52,6 +68,38 @@ def step_ok(step: str, detail=None) -> None:
 
 def _actor_subsystem():
     return unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+
+
+def clear_managed_actors() -> int:
+    """Delete every actor this pass creates so a re-run is idempotent.
+
+    Without this, re-running assemble (e.g. after a migration or a tweak)
+    spawns a whole second layer of 105 overlapping meshes at the origin.
+    Matched defensively: display meshes resolve by their asset path under
+    MESH_DIR; rig/ground by fixed label.
+    """
+    sub = _actor_subsystem()
+    world = unreal.EditorLevelLibrary.get_editor_world()
+    removed = 0
+    for actor in unreal.GameplayStatics.get_all_actors_of_class(
+            world, unreal.Actor):
+        label = actor.get_actor_label() if hasattr(actor, "get_actor_label") \
+            else ""
+        if label in _RIG_LABELS:
+            sub.destroy_actor(actor)
+            removed += 1
+            continue
+        if isinstance(actor, unreal.StaticMeshActor):
+            comps = actor.get_components_by_class(unreal.StaticMeshComponent)
+            if comps:
+                mesh = comps[0].get_editor_property("static_mesh")
+                if mesh is not None and mesh.get_path_name().startswith(
+                        MESH_DIR):
+                    sub.destroy_actor(actor)
+                    removed += 1
+    if removed:
+        log(f"removed {removed} stale actor(s) before rebuild")
+    return removed
 
 
 def _level_subsystem():
@@ -86,13 +134,15 @@ def _spawn(actor_class, location, name=None):
 
 
 def spawn_ground() -> object:
+    # 3 km plane: the same level doubles as the drivable showroom, and a
+    # small floor lets a driven car fall off the edge mid-test (observed).
     ground = _spawn(unreal.StaticMeshActor,
                     unreal.Vector(0, 0, -1.0), "Ground")
     if ground is None:
         raise RuntimeError("ground actor spawn failed")
     mesh = unreal.EditorAssetLibrary.load_asset(
         "/Engine/BasicShapes/Cube.Cube")
-    ground.set_actor_scale3d(unreal.Vector(60.0, 60.0, 0.05))
+    ground.set_actor_scale3d(unreal.Vector(3000.0, 3000.0, 0.05))
     if hasattr(ground, "set_static_mesh_asset"):
         ground.set_static_mesh_asset(mesh)
     comp = ground.get_editor_property("static_mesh_component")
@@ -117,10 +167,15 @@ def spawn_car(meshes) -> list:
     spawned = []
     origin = unreal.Vector(0.0, 0.0, 0.0)
     actor_sub = _actor_subsystem()
+    seen_paths = set()
     for mesh in meshes:
         name = mesh.get_name()
         if _DUP_SUFFIX.search(name):
             continue  # hash-suffixed duplicates overlap the primary mesh
+        path = mesh.get_path_name()
+        if path in seen_paths:
+            continue  # idempotent even without the hash-suffix convention
+        seen_paths.add(path)
         try:
             actor = actor_sub.spawn_actor_from_class(
                 unreal.StaticMeshActor, origin)
@@ -134,26 +189,6 @@ def spawn_car(meshes) -> list:
             log(f"spawn failed for {name}: {exc}")
     step_ok("car", len(spawned))
     return spawned
-
-
-def spawn_vehicle() -> object:
-    """Spawn the tuned BP_Vehicle131 above the ground.
-
-    Spawns from the generated class (from_object access-violates headlessly
-    on 5.5.4, same as spawn_car).  Raised on Z so the wheels rest on the
-    ground plane rather than clipping through it.
-    """
-    bp = unreal.EditorAssetLibrary.load_asset(
-        "/Game/Import/Vehicle/BP_Vehicle131")
-    if bp is None:
-        raise RuntimeError("BP_Vehicle131 not found")
-    actor = _actor_subsystem().spawn_actor_from_class(
-        bp.generated_class(), unreal.Vector(0.0, 0.0, 120.0))
-    if actor is None:
-        raise RuntimeError("vehicle spawn returned None")
-    actor.set_actor_label("BP_Vehicle131")
-    step_ok("vehicle_spawn", actor.get_actor_label())
-    return actor
 
 
 def spawn_lighting_rig() -> dict:
@@ -244,6 +279,7 @@ def save_level() -> bool:
 def main() -> None:
     try:
         ensure_level()
+        clear_managed_actors()
     except Exception as exc:
         fail("level", exc)
         return
@@ -266,16 +302,10 @@ def main() -> None:
     log(f"found {len(meshes)} static meshes")
 
     try:
-        actors = spawn_car(meshes)
-        RESULT["actors"]["car"] = len(actors)
+        spawn_car(meshes)
+        RESULT["actors"]["car"] = len(meshes)
     except Exception as exc:
         fail("car", exc)
-
-    try:
-        spawn_vehicle()
-        RESULT["actors"]["vehicle"] = 1
-    except Exception as exc:
-        fail("vehicle_spawn", exc)
 
     try:
         spawn_lighting_rig()

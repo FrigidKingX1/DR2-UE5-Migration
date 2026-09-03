@@ -315,6 +315,40 @@ and covered by synthetic round-trip tests.
     proper drivable terrain would need re-orientation as a floor;
     5.8 removed `unreal.ComponentUtils` and renamed several enums
     (`ECC_VISIBILITY`, `DrawDebugTrace`, 2-tuple `get_actor_bounds`).
+- [x] Live-editor regression sweep (September 2026, second MCP session):
+      three real bugs found and fixed, all verified by live PIE drive
+      tests via the new **`tools/ue_mcp/qa_drive.py`** regression script:
+  - **Stacked duplicate layers in `L_CarShowroom`**: the level held 420
+    display-mesh actors for only 105 unique (mesh, position) keys - every
+    part was quadrupled at the origin (z-fighting + 4x draw calls).  Root
+    cause: `assemble_level.py` dedup only skipped hash-suffixed Interchange
+    duplicates (a 5.5-era convention 5.8 no longer produces) AND re-runs
+    spawned a whole new layer on top of the loaded level.  Fix: the pass
+    now deletes its own previously-spawned actors (display meshes under
+    the mesh dir + ground + lighting rig) before rebuilding, and dedups by
+    unique mesh path - re-runs are idempotent (verified: re-run yields
+    exactly 105 actors, 0 duplicates).
+  - **`assemble_level.py` re-spawned the obsolete `BP_Vehicle131` shell**
+    at the origin - re-introducing the exact collision-blocker that once
+    broke GameMode pawn spawn ("nothing works on Play").  Fix: the
+    showroom no longer spawns any vehicle (the drivable car comes from
+    the GameMode/PlayerStart setup in `ue_ingest drivable`); the stale
+    asset was deleted (confirmed absent) and PIE now spawns exactly one
+    possessed `BP_Vehicle131_Drivable_C`.
+  - **Ground size regression**: the assemble pass reset the ground to
+    60x60 m, so a driven car fell off the edge mid-test (found it at
+    Z = -5.2 km doing 320 km/h).  The ground is now 3 km x 3 km in the
+    assemble pass itself.
+  - **Automation finding - input APIs**: while a controller possesses the
+    pawn (`RequiresControllerForInputs=True` on the movement component),
+    ALL direct `SetThrottleInput`/`SetBrakeInput`/`SetSteeringInput`
+    values are reset to 0 every tick - automation must either disable
+    `requires_controller_for_inputs` on the live PIE instance (per-
+    instance only; human WASD input is unaffected) or use the
+    Increase/Decrease accumulator API the template controller uses.
+    `qa_drive.py` does the former and validates: 0-44 km/h in 10 s
+    (RPM climbing to 2478), stop in ~4 s under brake (idle 1102),
+    clean steering hold - ride height stable on the 3 km floor.
 - [x] Engine 5.8 migration (September 2026): project switched to UE 5.8.2
       (`G:\UE5\UE_5.8\UE_5.8`); assets auto-upgraded on first load, all
       scripted passes re-ran clean. 5.8 notes: `TraceTypeQuery` members
