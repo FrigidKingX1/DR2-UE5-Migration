@@ -292,6 +292,29 @@ and covered by synthetic round-trip tests.
     parent into SportsCar assets, so the SportsCar pack must be copied
     too (and it MUST be the 5.5-layout pack - 5.8 renamed those assets).
     Final headless `-game` run: zero errors, world up for play.
+- [x] Live-editor QA pass (September 2026, via the MCP toolset): the
+      drivable pawn was still running TEMPLATE tuning - the Fiat 131
+      values (mass 1000, 7000 RPM / 190 Nm, 5-speed RWD, torque and
+      steering curves) are now applied to **`BP_Vehicle131_Drivable`**
+      and verified live in PIE (idle RPM exactly 1100).  Drive test
+      telemetry: 0-79 km/h in 10s full throttle, stop in ~2s under
+      brakes, clean steering hold - all with stable ride height.
+      Additional fixes: ground plane enlarged 60m -> 3km (the car
+      drove off the old edge into the void), stale `BP_Vehicle131` +
+      `BP_Wheel131` assets deleted (source of the "wheel 0 bone name"
+      warnings; the wheel-bone warning is fully gone), ambient engine
+      loop confirmed bound to MS_Engine131, and the PIE session logs
+      zero Accessed-None / LogVehicle / LogSpawn errors.
+  - QA findings recorded for future work: `GetForwardSpeed` returns
+    cm/s; `SetThrottleInput` decays per-tick (harmless for keyboard
+    input - Enhanced Input re-fires per tick - but automation must
+    re-fire or use rapid-fire calls); gear -1 at standstill is the
+    template's by-design auto-reverse; the terrain heightfield is a
+    static backdrop WALL (its bounds span X 0..299m / Y -286..0m /
+    Z up to 560m, and the car drives beneath its high surface) - a
+    proper drivable terrain would need re-orientation as a floor;
+    5.8 removed `unreal.ComponentUtils` and renamed several enums
+    (`ECC_VISIBILITY`, `DrawDebugTrace`, 2-tuple `get_actor_bounds`).
 - [x] Engine 5.8 migration (September 2026): project switched to UE 5.8.2
       (`G:\UE5\UE_5.8\UE_5.8`); assets auto-upgraded on first load, all
       scripted passes re-ran clean. 5.8 notes: `TraceTypeQuery` members
